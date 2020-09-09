@@ -20,6 +20,8 @@ jobs:
         uses: cmsd2/lambda-rust-cargo@master
         with:
           args: build --release
+      - name: Package
+        run: ./scripts/package.sh
       - name: Deploy
         uses: youyo/aws-cdk-github-actions@v1
         with:
