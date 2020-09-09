@@ -3,11 +3,11 @@ import * as lambda from "@aws-cdk/aws-lambda";
 import * as iam from "@aws-cdk/aws-iam";
 import * as path from "path";
 
-export class InfraStack extends cdk.Stack {
+export class WagonApiStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    const lambdaRole = new iam.Role(this, "api", {
+    const lambdaRole = new iam.Role(this, "FunctionRole", {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
     });
 
@@ -17,7 +17,7 @@ export class InfraStack extends cdk.Stack {
       )
     );
 
-    new lambda.Function(this, "api", {
+    new lambda.Function(this, "Function", {
       runtime: lambda.Runtime.PROVIDED,
       handler: "unused",
       code: lambda.Code.fromAsset(path.join("..", "dist", "api", "lambda.zip")),
