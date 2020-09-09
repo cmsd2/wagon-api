@@ -23,14 +23,20 @@ jobs:
       - name: Package
         run: ./scripts/package.sh
       - name: Deploy
+        id: deploy
         uses: youyo/aws-cdk-github-actions@v1
         with:
           cdk_subcommand: "deploy"
           cdk_stack: "*"
           actions_comment: false
-          args: "--require-approval never"
+          args:
+            - "--require-approval"
+            - "never"
           working_dir: "infra"
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: "eu-west-1"
+      - name: Check deploy status
+        if: job.steps.deploy.status == failure()
+        run: exit 1
