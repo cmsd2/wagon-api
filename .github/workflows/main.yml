@@ -1,0 +1,18 @@
+name: build
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@master
+      - name: Build
+        uses: cmsd2/lambda-rust-cargo@master
+        with:
+          args: build
