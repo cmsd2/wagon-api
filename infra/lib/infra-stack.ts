@@ -20,9 +20,7 @@ export class InfraStack extends cdk.Stack {
     new lambda.Function(this, "api", {
       runtime: lambda.Runtime.PROVIDED,
       handler: "unused",
-      code: lambda.Code.fromAsset(
-        path.join("..", "target", "release", "api.zip")
-      ),
+      code: lambda.Code.fromAsset(path.join("..", "dist", "api", "lambda.zip")),
       memorySize: 128,
       role: lambdaRole,
       timeout: cdk.Duration.seconds(2),
