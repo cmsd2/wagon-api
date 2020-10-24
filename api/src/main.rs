@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::error::Error;
 
+use aws_lambda_events::event::apigw;
 use lambda_runtime::{error::HandlerError, lambda, Context};
 use log::{self, error};
 use serde::{Deserialize, Serialize};
@@ -24,13 +26,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn my_handler(e: CustomEvent, c: Context) -> Result<CustomOutput, HandlerError> {
-    if e.first_name == "" {
-        error!("Empty first name in request {}", c.aws_request_id);
-        bail!("Empty first name");
-    }
+fn my_handler(
+    e: apigw::ApiGatewayProxyRequest,
+    c: apigw::ApiGatewayProxyRequestContext,
+) -> Result<apigw::ApiGatewayProxyResponse, HandlerError> {
+    log::debug!("{:?} {:?}", e.http_method, e.path);
 
-    Ok(CustomOutput {
-        message: format!("Hello, {}!", e.first_name),
+    Ok(apigw::ApiGatewayProxyResponse {
+        body: None,
+        status_code: 200,
+        headers: HashMap::new(),
+        multi_value_headers: HashMap::new(),
+        is_base64_encoded: Some(false),
     })
 }
