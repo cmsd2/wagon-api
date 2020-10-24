@@ -26,7 +26,7 @@ export class WagonApiStack extends cdk.Stack {
       role: lambdaRole,
       timeout: cdk.Duration.seconds(2),
       environment: {
-        RUST_LOG: 'debug'
+        RUST_LOG: 'info,api=debug'
       }
     });
 
