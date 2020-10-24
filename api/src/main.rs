@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use aws_lambda_events::event::apigw;
+use env_logger;
 use lambda_runtime::{error::HandlerError, lambda, Context};
 use log;
 use serde::{Deserialize, Serialize};
 use simple_error::bail;
-use simple_logger;
 
 #[derive(Deserialize)]
 struct CustomEvent {
@@ -20,7 +20,7 @@ struct CustomOutput {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    simple_logger::SimpleLogger::from_env().init()?;
+    env_logger::init();
     lambda!(my_handler);
 
     Ok(())
