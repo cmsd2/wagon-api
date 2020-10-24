@@ -21,7 +21,7 @@ export class WagonApiStack extends cdk.Stack {
     const handler = new lambda.Function(this, "Function", {
       runtime: lambda.Runtime.PROVIDED_AL2,
       handler: "unused",
-      code: lambda.Code.fromAsset(path.join("..", "dist", "api", "lambda.zip")),
+      code: lambda.Code.fromAsset(path.join("..", "target", "lambda.zip")),
       memorySize: 128,
       role: lambdaRole,
       timeout: cdk.Duration.seconds(2),
