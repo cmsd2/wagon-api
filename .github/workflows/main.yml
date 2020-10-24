@@ -12,16 +12,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@master
-      - name: Test
-        uses: cmsd2/lambda-rust-cargo@master
-        with:
-          args: test
-      - name: Build Release
-        uses: cmsd2/lambda-rust-cargo@master
-        with:
-          args: build --release
+      - name: Deps
+        run: ./scripts/deps.sh
       - name: Package
-        run: ./scripts/package.sh
+        run: ./scripts/build.sh
       - name: Deploy
         id: deploy
         uses: youyo/aws-cdk-github-actions@v1
