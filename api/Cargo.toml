@@ -14,3 +14,4 @@ log = "0.4.11"
 simple-error = "0.2.2"
 aws_lambda_events = "0.3.1"
 env_logger = "0.8.1"
+http_router = { version = "0.1", default-features = false }

@@ -30,6 +30,7 @@ version = "0.1.0"
 dependencies = [
  "aws_lambda_events",
  "env_logger",
+ "http_router",
  "lambda_runtime",
  "log",
  "serde",
@@ -334,6 +335,16 @@ dependencies = [
  "futures",
  "http",
  "tokio-buf",
+]
+
+[[package]]
+name = "http_router"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6eb5f1ce5b442fe612be006b88fbd8f887eefa37bb6b2ead8d3e50433154a8a4"
+dependencies = [
+ "lazy_static",
+ "regex",
 ]
 
 [[package]]
