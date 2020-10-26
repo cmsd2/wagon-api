@@ -1,4 +1,8 @@
+#[macro_use]
+extern crate maplit;
+
 pub mod config;
+pub mod db;
 pub mod error;
 pub mod repo;
 pub mod result;
