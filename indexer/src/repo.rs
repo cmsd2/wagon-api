@@ -5,6 +5,7 @@ use crate::work_dir::WorkDir;
 use git2::build::RepoBuilder;
 use git2::{Cred, Direction, FetchOptions, RemoteCallbacks, Repository};
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -84,6 +85,107 @@ impl Repo {
         }
         log::info!("checkout {} in {:?}", self.remote_url, self.dir);
         Ok(())
+    }
+
+    pub fn collect_files(&self) -> IndexerResult<HashSet<PathBuf>> {
+        let git_repo = self.open()?;
+
+        let commit_id = git_repo.refname_to_id("HEAD")?;
+        let commit = git_repo.find_commit(commit_id)?;
+
+        let mut result = HashSet::new();
+        commit
+            .tree()?
+            .walk(git2::TreeWalkMode::PreOrder, |root, entry| {
+                if let Some(name) = entry.name() {
+                    let mut path = PathBuf::from(root);
+                    path.push(name);
+                    result.insert(path);
+                } else {
+                    log::debug!("no path for {}", entry.id());
+                }
+                git2::TreeWalkResult::Ok
+            })?;
+        Ok(result)
+    }
+
+    pub fn collect_changed_files(
+        &self,
+        leaf: Option<git2::Oid>,
+        root: Option<git2::Oid>,
+    ) -> IndexerResult<HashSet<PathBuf>> {
+        let results = self.revwalk(
+            leaf,
+            root,
+            |commit_id, results| {
+                self.commit_deltas(
+                    commit_id,
+                    |delta, mut results| {
+                        if let Some(path) = delta.new_file().path() {
+                            results.insert(path.to_owned());
+                        }
+                        Ok(results)
+                    },
+                    results,
+                )
+            },
+            HashSet::new(),
+        )?;
+
+        Ok(results)
+    }
+
+    pub fn commit_deltas<R, F: Fn(git2::DiffDelta, R) -> IndexerResult<R>>(
+        &self,
+        commit_id: git2::Oid,
+        callback: F,
+        mut accumulator: R,
+    ) -> IndexerResult<R> {
+        let git_repo = self.open()?;
+        let commit = git_repo.find_commit(commit_id)?;
+        let commit_tree = commit.tree()?;
+        let mut diff_options = git2::DiffOptions::new();
+
+        for parent in commit.parents() {
+            let parent_tree = parent.tree()?;
+            let diff = git_repo.diff_tree_to_tree(
+                Some(&parent_tree),
+                Some(&commit_tree),
+                Some(&mut diff_options),
+            )?;
+            for delta in diff.deltas() {
+                accumulator = callback(delta, accumulator)?;
+            }
+        }
+        Ok(accumulator)
+    }
+
+    pub fn revwalk<R, F: Fn(git2::Oid, R) -> IndexerResult<R>>(
+        &self,
+        leaf: Option<git2::Oid>,
+        root: Option<git2::Oid>,
+        callback: F,
+        mut accumulator: R,
+    ) -> IndexerResult<R> {
+        let git_repo = self.open()?;
+        let mut revwalk = git_repo.revwalk()?;
+        revwalk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)?;
+
+        if let Some(leaf) = leaf {
+            revwalk.push(leaf)?;
+        } else {
+            revwalk.push_head()?;
+        }
+
+        if let Some(root) = root {
+            revwalk.hide(root)?;
+        }
+
+        for oid in revwalk {
+            accumulator = callback(oid?, accumulator)?;
+        }
+
+        Ok(accumulator)
     }
 
     pub fn path_exists<P>(path: P) -> bool

@@ -19,5 +19,11 @@ pub fn index(config: &Config) -> IndexerResult<()> {
     let repo = Repo::new(config)?;
     log::info!("indexing {:?}", config.index_git_url);
     repo.checkout()?;
+    for f in repo.collect_changed_files(None, None)? {
+        log::debug!("changed {:?}", f);
+    }
+    for f in repo.collect_files()? {
+        log::debug!("now {:?}", f);
+    }
     Ok(())
 }
