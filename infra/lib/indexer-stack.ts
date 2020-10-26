@@ -13,12 +13,12 @@ export class IndexerStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    this.registries_table = new dynamodb.Table(this, id + "RegistriesTable", {
+    this.registries_table = new dynamodb.Table(this, "RegistriesTable", {
         billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         partitionKey: { name: 'url', type: dynamodb.AttributeType.STRING },
     });
 
-    this.packages_table = new dynamodb.Table(this, id + "PackagesTable", {
+    this.packages_table = new dynamodb.Table(this, "PackagesTable", {
         billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         partitionKey: { name: 'name', type: dynamodb.AttributeType.STRING },
         sortKey: { name: 'version', type: dynamodb.AttributeType.STRING },

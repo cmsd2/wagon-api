@@ -48,6 +48,7 @@ export class WagonApiStack extends cdk.Stack {
     props.dashboard.addWidgets(new cw.LogQueryWidget({
       logGroupNames: [handler.logGroup.logGroupName],
       title: "Wagon Api Logs",
+      width: 24,
       queryLines: [
         "fields @timestamp, @message",
         "sort @timestamp desc",
