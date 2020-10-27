@@ -38,7 +38,8 @@ export class WagonApiStack extends cdk.Stack {
     });
 
     const api = new apigw.LambdaRestApi(this, id + "RestApi", {
-      handler: handler
+      handler: handler,
+      endpointTypes: [apigw.EndpointType.REGIONAL],
     });
 
     new cdk.CfnOutput(this, 'RegistryApiUrl', {
