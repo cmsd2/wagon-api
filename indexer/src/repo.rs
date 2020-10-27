@@ -33,13 +33,13 @@ pub enum RepoState {
 }
 
 pub struct Repo {
-    dir: WorkDir,
-    path: PathBuf,
-    remote_url: String,
-    remote_name: String,
-    remote_branch: String,
-    username: String,
-    password: String,
+    pub dir: WorkDir,
+    pub path: PathBuf,
+    pub remote_url: String,
+    pub remote_name: String,
+    pub remote_branch: String,
+    pub username: String,
+    pub password: String,
     state: RefCell<RepoState>,
 }
 
@@ -60,6 +60,11 @@ impl Repo {
             password: config.password.clone(),
             state: RefCell::new(RepoState::None),
         })
+    }
+
+    pub fn head_commit_id(&self) -> IndexerResult<String> {
+        let git_repo = self.open()?;
+        Ok(git_repo.refname_to_id("HEAD")?.to_string())
     }
 
     pub fn open(&self) -> IndexerResult<Rc<git2::Repository>> {

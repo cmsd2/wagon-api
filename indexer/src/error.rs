@@ -1,3 +1,4 @@
+use crate::db::error::DbError;
 use git2;
 use std::error::Error;
 use std::fmt;
@@ -9,6 +10,7 @@ pub enum IndexerError {
     IoError(io::Error),
     GitError(git2::Error),
     CloneDirectoryAlreadyExists,
+    DbError(DbError),
 }
 
 impl Error for IndexerError {}
@@ -34,5 +36,11 @@ impl From<git2::Error> for IndexerError {
 impl From<io::Error> for IndexerError {
     fn from(e: io::Error) -> Self {
         IndexerError::IoError(e)
+    }
+}
+
+impl From<DbError> for IndexerError {
+    fn from(e: DbError) -> Self {
+        IndexerError::DbError(e)
     }
 }

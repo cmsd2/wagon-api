@@ -1,10 +1,12 @@
 use crate::error::IndexerError;
 use crate::result::IndexerResult;
+use rusoto_core::Region;
 use std::path::PathBuf;
 
 pub const DEFAULT_WORK_DIR: &str = "/tmp";
 
 pub struct ConfigBuilder {
+    pub region: Region,
     pub index_git_url: Option<String>,
     pub work_dir: PathBuf,
     pub remote_name: String,
@@ -17,6 +19,7 @@ pub struct ConfigBuilder {
 impl Default for ConfigBuilder {
     fn default() -> Self {
         ConfigBuilder {
+            region: Region::default(),
             index_git_url: None,
             work_dir: PathBuf::from(DEFAULT_WORK_DIR),
             remote_name: "origin".to_string(),
@@ -29,6 +32,7 @@ impl Default for ConfigBuilder {
 }
 
 pub struct Config {
+    pub region: Region,
     pub index_git_url: String,
     pub work_dir: PathBuf,
     pub remote_name: String,
@@ -41,48 +45,36 @@ pub struct Config {
 impl Config {
     pub fn load() -> IndexerResult<Config> {
         let mut config = ConfigBuilder::default();
-
-        if let Some(git_url) = Self::maybe_get_env_var("INDEXER_GIT_URL")? {
-            config.index_git_url = Some(git_url);
-        }
-
-        if let Some(work_dir) = Self::maybe_get_env_var("INDEXER_WORK_DIR")? {
-            config.work_dir = PathBuf::from(work_dir);
-        }
-
-        if let Some(username) = Self::maybe_get_env_var("INDEXER_GITHUB_USER")? {
-            config.username = Some(username);
-        }
-
-        if let Some(password) = Self::maybe_get_env_var("INDEXER_GITHUB_TOKEN")? {
-            config.password = Some(password);
-        }
-
-        if let Some(branch) = Self::maybe_get_env_var("INDEXER_GITHUB_BRANCH")? {
-            config.remote_branch = branch;
-        }
-
-        Ok(config.build()?)
-    }
-
-    pub fn get_env_var(name: &str) -> IndexerResult<String> {
-        std::env::var(name)
-            .map_err(|e| IndexerError::ConfigError(format!("config key {}: {}", name, e)))
-    }
-
-    pub fn maybe_get_env_var(name: &str) -> IndexerResult<Option<String>> {
-        match std::env::var(name) {
-            Ok(value) => Ok(Some(value)),
-            Err(std::env::VarError::NotPresent) => Ok(None),
-            Err(e) => Err(IndexerError::ConfigError(format!(
-                "config key {}: {}",
-                name, e
-            ))),
-        }
+        config.load()?;
+        config.build()
     }
 }
 
 impl ConfigBuilder {
+    pub fn load(&mut self) -> IndexerResult<()> {
+        if let Some(git_url) = maybe_get_env_var("INDEXER_GIT_URL")? {
+            self.index_git_url = Some(git_url);
+        }
+
+        if let Some(work_dir) = maybe_get_env_var("INDEXER_WORK_DIR")? {
+            self.work_dir = PathBuf::from(work_dir);
+        }
+
+        if let Some(username) = maybe_get_env_var("INDEXER_GITHUB_USER")? {
+            self.username = Some(username);
+        }
+
+        if let Some(password) = maybe_get_env_var("INDEXER_GITHUB_TOKEN")? {
+            self.password = Some(password);
+        }
+
+        if let Some(branch) = maybe_get_env_var("INDEXER_GITHUB_BRANCH")? {
+            self.remote_branch = branch;
+        }
+
+        Ok(())
+    }
+
     pub fn validate(&self) -> IndexerResult<()> {
         if self.index_git_url.is_none() {
             return Err(IndexerError::ConfigError(format!(
@@ -109,6 +101,7 @@ impl ConfigBuilder {
         self.validate()?;
 
         Ok(Config {
+            region: self.region,
             index_git_url: self.index_git_url.unwrap(),
             work_dir: self.work_dir,
             username: self.username.unwrap(),
@@ -117,5 +110,21 @@ impl ConfigBuilder {
             remote_branch: self.remote_branch,
             persist_checkout: self.persist_checkout,
         })
+    }
+}
+
+pub fn get_env_var(name: &str) -> IndexerResult<String> {
+    std::env::var(name)
+        .map_err(|e| IndexerError::ConfigError(format!("config key {}: {}", name, e)))
+}
+
+pub fn maybe_get_env_var(name: &str) -> IndexerResult<Option<String>> {
+    match std::env::var(name) {
+        Ok(value) => Ok(Some(value)),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(e) => Err(IndexerError::ConfigError(format!(
+            "config key {}: {}",
+            name, e
+        ))),
     }
 }

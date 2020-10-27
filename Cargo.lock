@@ -844,6 +844,7 @@ dependencies = [
  "rusoto_core",
  "rusoto_dynamodb",
  "tempdir",
+ "tokio 0.2.22",
 ]
 
 [[package]]
@@ -2034,6 +2035,7 @@ dependencies = [
  "mio",
  "mio-named-pipes",
  "mio-uds",
+ "num_cpus",
  "pin-project-lite",
  "signal-hook-registry",
  "slab",
