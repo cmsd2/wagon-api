@@ -39,11 +39,15 @@ export class WagonApiStack extends cdk.Stack {
       },
     });
 
+    const logGroup = new logs.LogGroup(this, id + "ApiLogs");
+
     const api = new apigw.LambdaRestApi(this, id + "RestApi", {
       handler: handler,
       endpointTypes: [apigw.EndpointType.REGIONAL],
       deployOptions: {
         loggingLevel: apigw.MethodLoggingLevel.INFO,
+        accessLogDestination: new apigw.LogGroupLogDestination(logGroup),
+        accessLogFormat: apigw.AccessLogFormat.jsonWithStandardFields()
       }
     });
 
@@ -68,7 +72,7 @@ export class WagonApiStack extends cdk.Stack {
     });
 
     props.dashboard.addWidgets(new cw.LogQueryWidget({
-      logGroupNames: [handler.logGroup.logGroupName],
+      logGroupNames: [handler.logGroup.logGroupName, logGroup.logGroupName],
       title: "Wagon Api Logs",
       width: 24,
       queryLines: [
