@@ -4,8 +4,10 @@ import * as iam from "@aws-cdk/aws-iam";
 import * as path from "path";
 import * as apigw from "@aws-cdk/aws-apigateway";
 import * as cw from "@aws-cdk/aws-cloudwatch";
+import * as ssm from "@aws-cdk/aws-ssm";
 import * as logs from "@aws-cdk/aws-logs";
 import { DashboardStack } from "./dashboard-stack";
+import { SSL_OP_MICROSOFT_BIG_SSLV3_BUFFER } from "constants";
 
 export interface WagonApiStackProps extends cdk.StackProps {
   dashboard: cw.Dashboard,
@@ -42,12 +44,24 @@ export class WagonApiStack extends cdk.Stack {
       endpointTypes: [apigw.EndpointType.REGIONAL],
     });
 
-    new cdk.CfnOutput(this, 'WagonApiDomainName', {
+    new cdk.CfnOutput(this, 'WagonApiDomainNameOutput', {
       value: `${api.restApiId}.execute-api.${this.region}.amazonaws.com`,
+      exportName: "WagonApiDomainName",
     });
 
-    new cdk.CfnOutput(this, 'WagonApiPath', {
+    new ssm.StringParameter(this, "WagonApiDomainNameParameter", {
+      stringValue: `${api.restApiId}.execute-api.${this.region}.amazonaws.com`,
+      parameterName: "wagon-api-domain-name",
+    });
+
+    new cdk.CfnOutput(this, 'WagonApiPathOutput', {
       value: `/${api.deploymentStage.stageName}`,
+      exportName: "WagonApiPath",
+    });
+
+    new ssm.StringParameter(this, "WagonApiPathParameter", {
+      stringValue: `/${api.deploymentStage.stageName}`,
+      parameterName: "wagon-api-path",
     });
 
     props.dashboard.addWidgets(new cw.LogQueryWidget({
