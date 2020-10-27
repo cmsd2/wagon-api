@@ -19,7 +19,7 @@ async fn main(
     req: apigw::ApiGatewayProxyRequest,
     ctx: Context,
 ) -> ApiResult<apigw::ApiGatewayProxyResponse> {
-    env_logger::init();
+    drop(env_logger::try_init());
     api_handler(req, ctx).await
 }
 
