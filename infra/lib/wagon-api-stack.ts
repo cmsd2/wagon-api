@@ -42,6 +42,9 @@ export class WagonApiStack extends cdk.Stack {
     const api = new apigw.LambdaRestApi(this, id + "RestApi", {
       handler: handler,
       endpointTypes: [apigw.EndpointType.REGIONAL],
+      deployOptions: {
+        loggingLevel: apigw.MethodLoggingLevel.INFO,
+      }
     });
 
     new cdk.CfnOutput(this, 'WagonApiDomainNameOutput', {
