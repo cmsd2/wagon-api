@@ -2,40 +2,31 @@
 extern crate http_router;
 
 use std::collections::HashMap;
-use std::error::Error;
 
 use aws_lambda_events::event::apigw;
 use env_logger;
 use http_router::Method;
-use lambda_runtime::{error::HandlerError, lambda, Context};
+use lambda::{lambda, Context};
 use log;
-use serde::{Deserialize, Serialize};
 use simple_error::bail;
 
-pub type HandlerResult<T> = Result<T, HandlerError>;
+type ApiError = Box<dyn std::error::Error + Send + Sync + 'static>;
+type ApiResult<T> = std::result::Result<T, ApiError>;
 
-#[derive(Deserialize)]
-struct CustomEvent {
-    #[serde(rename = "firstName")]
-    first_name: String,
-}
-
-#[derive(Serialize)]
-struct CustomOutput {
-    message: String,
-}
-
-fn main() -> Result<(), Box<dyn Error>> {
-    env_logger::init();
-    lambda!(my_handler);
-
-    Ok(())
-}
-
-fn my_handler(
+#[lambda]
+#[tokio::main]
+async fn main(
     req: apigw::ApiGatewayProxyRequest,
     ctx: Context,
-) -> HandlerResult<apigw::ApiGatewayProxyResponse> {
+) -> ApiResult<apigw::ApiGatewayProxyResponse> {
+    env_logger::init();
+    api_handler(req, ctx).await
+}
+
+async fn api_handler(
+    req: apigw::ApiGatewayProxyRequest,
+    ctx: Context,
+) -> ApiResult<apigw::ApiGatewayProxyResponse> {
     log::info!("{:?} {:?}", req.http_method, req.path);
 
     let router = router!(
@@ -50,23 +41,23 @@ fn my_handler(
     router(ctx, method, path)
 }
 
-pub fn get_root(context: &Context) -> HandlerResult<apigw::ApiGatewayProxyResponse> {
+pub fn get_root(_context: &Context) -> ApiResult<apigw::ApiGatewayProxyResponse> {
     not_implemented()
 }
 
 pub fn download_crate(
-    context: &Context,
+    _context: &Context,
     _library: String,
     _version: String,
-) -> HandlerResult<apigw::ApiGatewayProxyResponse> {
+) -> ApiResult<apigw::ApiGatewayProxyResponse> {
     not_implemented()
 }
 
-pub fn not_found(context: &Context) -> HandlerResult<apigw::ApiGatewayProxyResponse> {
+pub fn not_found(_context: &Context) -> ApiResult<apigw::ApiGatewayProxyResponse> {
     Ok(text_response(404, "Not Found"))
 }
 
-pub fn not_implemented() -> HandlerResult<apigw::ApiGatewayProxyResponse> {
+pub fn not_implemented() -> ApiResult<apigw::ApiGatewayProxyResponse> {
     Ok(text_response(500, "Not Implemented"))
 }
 
@@ -80,7 +71,7 @@ pub fn text_response<S: Into<String>>(status: i64, body: S) -> apigw::ApiGateway
     }
 }
 
-pub fn get_method(req: &apigw::ApiGatewayProxyRequest) -> HandlerResult<Method> {
+pub fn get_method(req: &apigw::ApiGatewayProxyRequest) -> ApiResult<Method> {
     if let Some(ref method) = req.http_method {
         match method.to_uppercase().as_str() {
             "GET" => Ok(Method::GET),
@@ -99,6 +90,6 @@ pub fn get_method(req: &apigw::ApiGatewayProxyRequest) -> HandlerResult<Method> 
     }
 }
 
-pub fn get_path(req: &apigw::ApiGatewayProxyRequest) -> HandlerResult<&str> {
+pub fn get_path(req: &apigw::ApiGatewayProxyRequest) -> ApiResult<&str> {
     Ok(req.path.as_ref().map(|s| &s[..]).unwrap_or("/"))
 }
