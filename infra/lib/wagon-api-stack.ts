@@ -42,8 +42,12 @@ export class WagonApiStack extends cdk.Stack {
       endpointTypes: [apigw.EndpointType.REGIONAL],
     });
 
-    new cdk.CfnOutput(this, 'RegistryApiUrl', {
-      value: `https://${api.restApiId}.execute-api.${this.region}.amazonaws.com/${api.deploymentStage.stageName}`,
+    new cdk.CfnOutput(this, 'WagonApiDomainName', {
+      value: `${api.restApiId}.execute-api.${this.region}.amazonaws.com`,
+    });
+
+    new cdk.CfnOutput(this, 'WagonApiPath', {
+      value: `/${api.deploymentStage.stageName}`,
     });
 
     props.dashboard.addWidgets(new cw.LogQueryWidget({
