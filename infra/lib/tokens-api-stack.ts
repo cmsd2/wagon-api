@@ -52,7 +52,7 @@ export class TokensApiStack extends cdk.Stack {
             },
         });
 
-        props.api.apiResource.addResource('token').addMethod('POST', new apigw.LambdaIntegration(this.handler, {
+        props.api.apiResource.addResource('token').addMethod('ANY', new apigw.LambdaIntegration(this.handler, {
             proxy: true,
         }), {
             authorizer: props.api.jwtAuthorizer,
