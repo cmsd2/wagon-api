@@ -30,6 +30,7 @@ new LogsWidgetStack(app, "WagonLogsWidget", {
     logGroupNames: [
         tokensApi.handler.logGroup.logGroupName,
         v1Api.handler.logGroup.logGroupName,
-        apiStack.logGroup.logGroupName
+        apiStack.logGroup.logGroupName,
+        apiStack.jwtAuthorizerFunction.logGroup.logGroupName,
     ]
 });

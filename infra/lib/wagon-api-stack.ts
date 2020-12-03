@@ -14,6 +14,7 @@ export interface WagonApiStackProps extends cdk.StackProps {
 }
 
 export class WagonApiStack extends cdk.Stack {
+  jwtAuthorizerFunction: lambda.Function;
   jwtAuthorizer: apigw.TokenAuthorizer;
   apiResource: apigw.Resource;
   logGroup: logs.LogGroup;
@@ -31,7 +32,7 @@ export class WagonApiStack extends cdk.Stack {
       )
     );
 
-    const jwtAuthorizerFunction = new lambda.Function(this, "JwtAuthorizerFunction", {
+    this.jwtAuthorizerFunction = new lambda.Function(this, "JwtAuthorizerFunction", {
       runtime: lambda.Runtime.PROVIDED_AL2,
       handler: "unused",
       code: lambda.Code.fromAsset(path.join("..", "target", "lambda-jwt_authorizer.zip")),
@@ -46,7 +47,7 @@ export class WagonApiStack extends cdk.Stack {
     });
 
     this.jwtAuthorizer = new apigw.TokenAuthorizer(this, 'JwtAuthorizer', {
-      handler: jwtAuthorizerFunction
+      handler: this.jwtAuthorizerFunction
     });
 
     const lambdaRole = new iam.Role(this, "FunctionRole", {
