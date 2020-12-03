@@ -40,6 +40,16 @@ export class TokensApiStack extends cdk.Stack {
             )
         );
 
+        lambdaRole.addToPolicy(new iam.PolicyStatement({
+            resources: ['*'],
+            actions: ['kms:GenerateRandom']
+        }));
+
+        lambdaRole.addToPolicy(new iam.PolicyStatement({
+            resources: [this.tokensTable.tableArn],
+            actions: ['dynamodb:GetItem','dynamodb:PutItem','dynamodb:UpdateItem']
+        }));
+
         this.handler = new lambda.Function(this, "Function", {
             runtime: lambda.Runtime.PROVIDED_AL2,
             handler: "unused",
