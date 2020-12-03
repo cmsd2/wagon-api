@@ -25,6 +25,12 @@ export class WagonApiStack extends cdk.Stack {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
     });
 
+    authorizerLambdaRole.addManagedPolicy(
+      iam.ManagedPolicy.fromAwsManagedPolicyName(
+        "service-role/AWSLambdaBasicExecutionRole"
+      )
+    );
+
     const jwtAuthorizerFunction = new lambda.Function(this, "JwtAuthorizerFunction", {
       runtime: lambda.Runtime.PROVIDED_AL2,
       handler: "unused",
