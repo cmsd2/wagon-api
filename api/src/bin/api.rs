@@ -29,7 +29,14 @@ async fn main(
     ctx: Context,
 ) -> LambdaResult<apigw::ApiGatewayProxyResponse> {
     drop(env_logger::try_init());
-    api_handler(req, ctx).await.map_err(|e| e.into())
+    api_handler(req, ctx).await.or_else(|err| {
+        log::error!("error: {:?}", err);
+        Ok(match err {
+            ApiError::NotAuthorized(_) => text_response(401, format!("Not Authorized")),
+            ApiError::Database(s) => text_response(500, format!("Internal Server Error: {}", s)),
+            ApiError::Other(s) => text_response(500, format!("Internal Server Error: {}", s)),
+        })
+    })
 }
 
 async fn api_handler(

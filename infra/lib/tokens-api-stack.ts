@@ -58,7 +58,8 @@ export class TokensApiStack extends cdk.Stack {
             role: lambdaRole,
             timeout: cdk.Duration.seconds(2),
             environment: {
-                RUST_LOG: 'info,api=debug'
+                RUST_LOG: 'info,api=debug',
+                TOKENS_TABLE: this.tokensTable.tableName,
             },
         });
 

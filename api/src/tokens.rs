@@ -22,7 +22,10 @@ pub async fn get_user_token(user_id: &str) -> ApiResult<Option<String>> {
         table_name: TOKENS_TABLE.clone(),
         ..Default::default()
     }).await
-        .map_err(|err| ApiError::Database(format!("error fetching token: {:?}", err)))?;
+        .map_err(|err| {
+            log::error!("get token error for user {}: {:?}", user_id, err);
+            ApiError::Database(format!("error fetching token"))
+        })?;
 
     Ok(output.item.and_then(|mut attrs| attrs.remove("token")).and_then(|token_attr| token_attr.s))
 }
@@ -32,7 +35,10 @@ pub async fn generate_token() -> ApiResult<String> {
         number_of_bytes: Some(24),
         ..Default::default()
     }).await
-        .map_err(|err| ApiError::Database(format!("error generating token: {:?}", err)))?;
+    .map_err(|err| {
+        log::error!("generate token error: {:?}", err);
+        ApiError::Database(format!("error generating token"))
+    })?;
     
     output.plaintext
         .ok_or_else(|| ApiError::Database(format!("error generating token: no token returned")))
@@ -50,7 +56,10 @@ pub async fn create_user_token(user_id: &str) -> ApiResult<String> {
         table_name: TOKENS_TABLE.to_owned(),
         ..Default::default()
     }).await
-        .map_err(|err| ApiError::Database(format!("error saving token: {:?}", err)))?;
+        .map_err(|err| {
+            log::error!("put token error for user {}: {:?}", user_id, err);
+            ApiError::Database(format!("error saving token"))
+        })?;
     
     Ok(token)
 }
