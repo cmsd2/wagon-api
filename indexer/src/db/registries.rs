@@ -1,9 +1,8 @@
 use super::error::DbError;
 use super::result::DbResult;
 use super::DbConfig;
-use rusoto_core::RusotoError;
 use rusoto_dynamodb::{
-    AttributeValue, DynamoDb, DynamoDbClient, GetItemInput, PutItemInput, UpdateItemError,
+    AttributeValue, DynamoDb, DynamoDbClient, GetItemInput, PutItemInput,
     UpdateItemInput,
 };
 use std::collections::HashMap;

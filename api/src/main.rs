@@ -28,9 +28,11 @@ async fn api_handler(
     ctx: Context,
 ) -> ApiResult<apigw::ApiGatewayProxyResponse> {
     log::info!("{:?} {:?}", req.http_method, req.path);
+    log::debug!("{:?}", req.request_context);
 
     let router = router!(
         GET / => get_root,
+        POST /api/token => create_token,
         GET /api/v1/crates/{library: String}/{version: String}/download => download_crate,
         _ => not_found,
     );
@@ -42,6 +44,10 @@ async fn api_handler(
 }
 
 pub fn get_root(_context: &Context) -> ApiResult<apigw::ApiGatewayProxyResponse> {
+    not_implemented()
+}
+
+pub fn create_token(_context: &Context) -> ApiResult<apigw::ApiGatewayProxyResponse> {
     not_implemented()
 }
 

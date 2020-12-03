@@ -6,16 +6,42 @@ import * as apigw from "@aws-cdk/aws-apigateway";
 import * as cw from "@aws-cdk/aws-cloudwatch";
 import * as ssm from "@aws-cdk/aws-ssm";
 import * as logs from "@aws-cdk/aws-logs";
-import { DashboardStack } from "./dashboard-stack";
-import { SSL_OP_MICROSOFT_BIG_SSLV3_BUFFER } from "constants";
 
 export interface WagonApiStackProps extends cdk.StackProps {
-  dashboard: cw.Dashboard,
+  dashboard: cw.Dashboard;
+  openid_config_uri: string;
+  openid_aud: string;
 }
 
 export class WagonApiStack extends cdk.Stack {
+  jwtAuthorizer: apigw.TokenAuthorizer;
+  apiResource: apigw.Resource;
+  logGroup: logs.LogGroup;
+
   constructor(scope: cdk.Construct, id: string, props: WagonApiStackProps) {
     super(scope, id, props);
+
+    const authorizerLambdaRole = new iam.Role(this, "AuthorizerFunctionRole", {
+      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+    });
+
+    const jwtAuthorizerFunction = new lambda.Function(this, "JwtAuthorizerFunction", {
+      runtime: lambda.Runtime.PROVIDED_AL2,
+      handler: "unused",
+      code: lambda.Code.fromAsset(path.join("..", "target", "lambda-jwt_authorizer.zip")),
+      memorySize: 128,
+      role: authorizerLambdaRole,
+      timeout: cdk.Duration.seconds(2),
+      environment: {
+        RUST_LOG: 'info,jwt_authorizer=debug',
+        OPENID_CONFIGURATION_URI: props.openid_config_uri,
+        OPENID_AUD: props.openid_aud,
+      },
+    });
+
+    this.jwtAuthorizer = new apigw.TokenAuthorizer(this, 'JwtAuthorizer', {
+      handler: jwtAuthorizerFunction
+    });
 
     const lambdaRole = new iam.Role(this, "FunctionRole", {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
@@ -27,29 +53,18 @@ export class WagonApiStack extends cdk.Stack {
       )
     );
 
-    const handler = new lambda.Function(this, "Function", {
-      runtime: lambda.Runtime.PROVIDED_AL2,
-      handler: "unused",
-      code: lambda.Code.fromAsset(path.join("..", "target", "lambda.zip")),
-      memorySize: 128,
-      role: lambdaRole,
-      timeout: cdk.Duration.seconds(2),
-      environment: {
-        RUST_LOG: 'info,api=debug'
-      },
-    });
+    this.logGroup = new logs.LogGroup(this, id + "ApiLogs");
 
-    const logGroup = new logs.LogGroup(this, id + "ApiLogs");
-
-    const api = new apigw.LambdaRestApi(this, id + "RestApi", {
-      handler: handler,
+    const api = new apigw.RestApi(this, id + "RestApi", {
       endpointTypes: [apigw.EndpointType.REGIONAL],
       deployOptions: {
         loggingLevel: apigw.MethodLoggingLevel.INFO,
-        accessLogDestination: new apigw.LogGroupLogDestination(logGroup),
+        accessLogDestination: new apigw.LogGroupLogDestination(this.logGroup),
         accessLogFormat: apigw.AccessLogFormat.jsonWithStandardFields()
-      }
+      },
     });
+
+    this.apiResource = api.root.addResource('api');
 
     new cdk.CfnOutput(this, 'WagonApiDomainNameOutput', {
       value: `${api.restApiId}.execute-api.${this.region}.amazonaws.com`,
@@ -70,16 +85,5 @@ export class WagonApiStack extends cdk.Stack {
       stringValue: `/${api.deploymentStage.stageName}`,
       parameterName: "wagon-api-path",
     });
-
-    props.dashboard.addWidgets(new cw.LogQueryWidget({
-      logGroupNames: [handler.logGroup.logGroupName, logGroup.logGroupName],
-      title: "Wagon Api Logs",
-      width: 24,
-      queryLines: [
-        "fields @timestamp, @message",
-        "sort @timestamp desc",
-        "limit 200",
-      ]
-    }));
   }
 }

@@ -2,4 +2,6 @@
 
 set -euxo pipefail
 
-cargo install aws-build
+git clone https://github.com/cmsd2/aws-build
+
+cargo install --git https://github.com/cmsd2/aws-build
