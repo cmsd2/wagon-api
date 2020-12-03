@@ -4,6 +4,7 @@ use serde_json::json;
 use aws_lambda_events::event::apigw;
 use authorizers::jwt::IdToken;
 use authorizers::iam::ApiGatewayCustomAuthorizerPolicyBuilder;
+use authorizers::error::AuthError;
 use env_logger;
 use lambda::{lambda, Context};
 use log::{info, debug};
@@ -34,12 +35,24 @@ async fn main(
 }
 
 async fn authenticate(event: &apigw::ApiGatewayCustomAuthorizerRequest) -> ApiResult<IdToken> {
-    let authorization_token = event.authorization_token.as_ref().map(|s| &s[..]).ok_or_else(|| "missing auth token".to_string())?;
+    let authorization_header = event.authorization_token.as_ref().map(|s| &s[..]).ok_or_else(|| "missing auth token".to_string())?;
 
-    // validates algorithm, signature, issuer, audience and expiry
-    let claims = TOKEN_DECODER.decode(&authorization_token).await?;
+    let parts = authorization_header.split(" ").collect::<Vec<&str>>();
+    let bearer: Option<&str> = parts.get(0).map(|s| *s);
+    let token: Option<&str> = parts.get(1).map(|s| *s);
 
-    Ok(claims)
+    if bearer != Some("Bearer") {
+        return Err(AuthError::InputError("token does not start with Bearer".to_string()).into());
+    }
+
+    if let Some(token) = token {
+        if token == "" {
+            return Err(AuthError::InputError("empty bearer token".to_string()).into());
+        }
+        return Ok(TOKEN_DECODER.decode(token).await?);
+    } else {
+        return Err(AuthError::InputError("missing bearer token".to_string()).into());
+    }
 }
 
 fn authorize(event: &apigw::ApiGatewayCustomAuthorizerRequest, claims: &IdToken) -> ApiResult<apigw::ApiGatewayCustomAuthorizerPolicy> {
