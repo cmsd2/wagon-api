@@ -30,6 +30,15 @@ export class TokensApiStack extends cdk.Stack {
             encryption: ddb.TableEncryption.DEFAULT,
         });
 
+        this.tokensTable.addGlobalSecondaryIndex({
+            indexName: 'TokensIndex',
+            partitionKey: {
+                name: 'token',
+                type: ddb.AttributeType.STRING,
+            },
+            projectionType: ddb.ProjectionType.KEYS_ONLY,
+        });
+
         const lambdaRole = new iam.Role(this, "FunctionRole", {
             assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
           });
@@ -44,11 +53,8 @@ export class TokensApiStack extends cdk.Stack {
             resources: ['*'],
             actions: ['kms:GenerateRandom']
         }));
-
-        lambdaRole.addToPolicy(new iam.PolicyStatement({
-            resources: [this.tokensTable.tableArn],
-            actions: ['dynamodb:GetItem','dynamodb:PutItem','dynamodb:UpdateItem']
-        }));
+        
+        this.tokensTable.grantReadWriteData(lambdaRole);
 
         this.handler = new lambda.Function(this, "Function", {
             runtime: lambda.Runtime.PROVIDED_AL2,

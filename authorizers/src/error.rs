@@ -8,6 +8,7 @@ pub enum AuthError {
     HttpError(reqwest::Error),
     JwtError(String),
     InputError(String),
+    DatabaseError(String),
 }
 
 impl Error for AuthError {

@@ -3,8 +3,10 @@ use std::collections::HashMap;
 use serde_json::json;
 use aws_lambda_events::event::apigw;
 use authorizers::jwt::IdToken;
-use authorizers::iam::ApiGatewayCustomAuthorizerPolicyBuilder;
+use authorizers::iam::{ApiGatewayCustomAuthorizerPolicyBuilder, policy_builder_for_method};
 use authorizers::error::AuthError;
+use authorizers::result::AuthResult;
+use authorizers::token::AuthorizationHeader;
 use env_logger;
 use lambda::{lambda, Context};
 use log::{info, debug};
@@ -13,8 +15,8 @@ use authorizers::jwt::TokenDecoder;
 use lazy_static::lazy_static;
 use std::env;
 
-type ApiError = Box<dyn std::error::Error + Send + Sync + 'static>;
-type ApiResult<T> = std::result::Result<T, ApiError>;
+type LambdaRuntimeError = Box<dyn std::error::Error + Send + Sync + 'static>;
+type LambdaRuntimeResult<T> = std::result::Result<T, LambdaRuntimeError>;
 
 lazy_static! {
     static ref TOKEN_DECODER: TokenDecoder = TokenDecoder::new(
@@ -23,63 +25,51 @@ lazy_static! {
     );
 }
 
+pub struct Claims {
+    pub principal_id: String,
+}
+
 #[lambda]
 #[tokio::main]
 async fn main(
     req: apigw::ApiGatewayCustomAuthorizerRequest,
     ctx: Context,
-) -> ApiResult<apigw::ApiGatewayCustomAuthorizerResponse<serde_json::Value>> {
+) -> LambdaRuntimeResult<apigw::ApiGatewayCustomAuthorizerResponse<serde_json::Value>> {
     drop(env_logger::try_init());
 
-    authorizer_handler(req, ctx).await
+    Ok(authorizer_handler(req, ctx).await)
 }
 
-async fn authenticate(event: &apigw::ApiGatewayCustomAuthorizerRequest) -> ApiResult<IdToken> {
-    let authorization_header = event.authorization_token.as_ref().map(|s| &s[..]).ok_or_else(|| "missing auth token".to_string())?;
-
-    let parts = authorization_header.split(" ").collect::<Vec<&str>>();
-    let bearer: Option<&str> = parts.get(0).map(|s| *s);
-    let token: Option<&str> = parts.get(1).map(|s| *s);
-
-    if bearer != Some("Bearer") {
-        return Err(AuthError::InputError("token does not start with Bearer".to_string()).into());
-    }
-
-    if let Some(token) = token {
-        if token == "" {
-            return Err(AuthError::InputError("empty bearer token".to_string()).into());
+async fn authenticate(event: &apigw::ApiGatewayCustomAuthorizerRequest) -> AuthResult<Claims> {
+    match AuthorizationHeader::from_request(event) {
+        AuthorizationHeader::BearerToken(token) => {
+            let id_token = TOKEN_DECODER.decode(&token).await?;
+            Ok(Claims {
+                principal_id: id_token.sub
+            })
+        },
+        _other => {
+            Err(AuthError::InputError(format!("bearer token expected")))
         }
-        return Ok(TOKEN_DECODER.decode(token).await?);
-    } else {
-        return Err(AuthError::InputError("missing bearer token".to_string()).into());
     }
 }
 
-fn authorize(event: &apigw::ApiGatewayCustomAuthorizerRequest, claims: &IdToken) -> ApiResult<apigw::ApiGatewayCustomAuthorizerPolicy> {
+fn authorize(event: &apigw::ApiGatewayCustomAuthorizerRequest) -> AuthResult<apigw::ApiGatewayCustomAuthorizerPolicy> {
     Ok(policy_builder_for_method(&event)
-        .allow_all_methods()?
+        .allow_all_methods()
         .build())
 }
 
-async fn auth(event: &apigw::ApiGatewayCustomAuthorizerRequest) -> ApiResult<(Option<String>, apigw::ApiGatewayCustomAuthorizerPolicy)> {
-    authenticate(&event).await
-        .and_then(|claims| {
-            authorize(&event, &claims)
-                .map(|policy| (Some(claims.sub.to_string()), policy))
-        })
-        .or_else(|err| {
-            info!("authentication failure: {:?}", err);
-
-            Ok((None, policy_builder_for_method(&event)
-                .deny_all_methods()?
-                .build()))
-        })
+async fn auth(event: &apigw::ApiGatewayCustomAuthorizerRequest) -> AuthResult<(Option<String>, apigw::ApiGatewayCustomAuthorizerPolicy)> {
+    let claims = authenticate(&event).await?;
+    let policy = authorize(&event)?;
+    Ok((Some(claims.principal_id), policy))
 }
 
 async fn authorizer_handler(
     event: apigw::ApiGatewayCustomAuthorizerRequest,
     ctx: Context,
-) -> ApiResult<apigw::ApiGatewayCustomAuthorizerResponse<serde_json::Value>> {
+) -> apigw::ApiGatewayCustomAuthorizerResponse<serde_json::Value> {
     info!("Client token: {:?}", event.authorization_token);
     info!("Method ARN: {:?}", event.method_arn);
 
@@ -91,7 +81,13 @@ async fn authorizer_handler(
     // 2. Decode a JWT token inline
     // 3. Lookup in a self-managed DB
 
-    let (principal_id, policy) = auth(&event).await?;
+    let (principal_id, policy) = auth(&event).await.unwrap_or_else(|err| {
+        info!("authentication failure: {:?}", err);
+
+        (None, policy_builder_for_method(&event)
+                .deny_all_methods()
+                .build())
+    });
     
 
     // you can send a 401 Unauthorized response to the client by failing like so:
@@ -114,50 +110,10 @@ async fn authorizer_handler(
     // new! -- add additional key-value pairs associated with the authenticated principal
     // these are made available by APIGW like so: $context.authorizer.<key>
     // additional context is cached
-    Ok(apigw::ApiGatewayCustomAuthorizerResponse {
+    apigw::ApiGatewayCustomAuthorizerResponse {
         principal_id: principal_id,
         policy_document: policy,
         context: HashMap::new(),
         usage_identifier_key: None,
-    })
-}
-
-pub fn policy_builder_for_method(event: &apigw::ApiGatewayCustomAuthorizerRequest) -> ApiGatewayCustomAuthorizerPolicyBuilder {
-    let tmp: Vec<&str> = event.method_arn.as_ref().map(|s| &s[..]).unwrap().split(":").collect();
-    let api_gateway_arn_tmp: Vec<&str> = tmp[5].split("/").collect();
-    let aws_account_id = tmp[4];
-    let region = tmp[3];
-    let rest_api_id = api_gateway_arn_tmp[0];
-    let stage = api_gateway_arn_tmp[1];
-
-    ApiGatewayCustomAuthorizerPolicyBuilder::new(region, aws_account_id, rest_api_id, stage)
-}
-
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_policy_builder_for_event() {
-        let req = apigw::ApiGatewayCustomAuthorizerRequest {
-            type_: Some("TOKEN".to_string()),
-            authorization_token: Some("foo".to_string()),
-            method_arn: Some("arn:aws:execute-api:region:account:apiId/stage/verb/resource/childResource]".to_string()),
-        };
-        let builder = policy_builder_for_method(&req)
-            .allow_all_methods()
-            .expect("allow all");
-        assert_eq!(builder.region, "region".to_string());
-        assert_eq!(builder.aws_account_id, "account".to_string());
-        assert_eq!(builder.rest_api_id, "apiId".to_string());
-        assert_eq!(builder.stage, "stage".to_string());
-        assert_eq!(builder.policy.statement, vec![
-            apigw::IamPolicyStatement {
-                action: vec!["execute-api:Invoke".to_string()],
-                effect: Some("Allow".to_string()),
-                resource: vec!["arn:aws:execute-api:region:account:apiId/stage/*/*".to_string()]
-            }
-        ]);
     }
 }

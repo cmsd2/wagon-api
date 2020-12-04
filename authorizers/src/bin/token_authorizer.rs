@@ -2,29 +2,81 @@ use std::collections::HashMap;
 
 use serde_json::json;
 use aws_lambda_events::event::apigw;
-use authorizers::iam::ApiGatewayCustomAuthorizerPolicyBuilder;
+use authorizers::jwt::IdToken;
+use authorizers::iam::{ApiGatewayCustomAuthorizerPolicyBuilder, policy_builder_for_method};
+use authorizers::error::AuthError;
+use authorizers::result::AuthResult;
+use authorizers::token::AuthorizationHeader;
 use env_logger;
 use lambda::{lambda, Context};
 use log::{info, debug};
 use simple_error::bail;
+use authorizers::jwt::TokenDecoder;
+use lazy_static::lazy_static;
+use std::env;
 
-type ApiError = Box<dyn std::error::Error + Send + Sync + 'static>;
-type ApiResult<T> = std::result::Result<T, ApiError>;
+type LambdaRuntimeError = Box<dyn std::error::Error + Send + Sync + 'static>;
+type LambdaRuntimeResult<T> = std::result::Result<T, LambdaRuntimeError>;
+
+lazy_static! {
+    static ref TOKEN_DECODER: TokenDecoder = TokenDecoder::new(
+        &env::var("OPENID_CONFIGURATION_URI").unwrap(),
+        &env::var("OPENID_AUD").unwrap()
+    );
+}
+
+pub struct Claims {
+    pub principal_id: String,
+}
 
 #[lambda]
 #[tokio::main]
 async fn main(
     req: apigw::ApiGatewayCustomAuthorizerRequest,
     ctx: Context,
-) -> ApiResult<apigw::ApiGatewayCustomAuthorizerResponse<serde_json::Value>> {
+) -> LambdaRuntimeResult<apigw::ApiGatewayCustomAuthorizerResponse<serde_json::Value>> {
     drop(env_logger::try_init());
-    authorizer_handler(req, ctx).await
+
+    Ok(authorizer_handler(req, ctx).await)
+}
+
+async fn lookup_api_key(key: &str) -> AuthResult<Claims> {
+    todo!()
+}
+
+async fn authenticate(event: &apigw::ApiGatewayCustomAuthorizerRequest) -> AuthResult<Claims> {
+    match AuthorizationHeader::from_request(event) {
+        AuthorizationHeader::BearerToken(token) => {
+            let id_token = TOKEN_DECODER.decode(&token).await?;
+            Ok(Claims {
+                principal_id: id_token.sub
+            })
+        },
+        AuthorizationHeader::ApiKey(key) => {
+            lookup_api_key(&key).await
+        },
+        _other => {
+            Err(AuthError::InputError(format!("bearer token expected")))
+        }
+    }
+}
+
+fn authorize(event: &apigw::ApiGatewayCustomAuthorizerRequest) -> AuthResult<apigw::ApiGatewayCustomAuthorizerPolicy> {
+    Ok(policy_builder_for_method(&event)
+        .allow_all_methods()
+        .build())
+}
+
+async fn auth(event: &apigw::ApiGatewayCustomAuthorizerRequest) -> AuthResult<(Option<String>, apigw::ApiGatewayCustomAuthorizerPolicy)> {
+    let claims = authenticate(&event).await?;
+    let policy = authorize(&event)?;
+    Ok((Some(claims.principal_id), policy))
 }
 
 async fn authorizer_handler(
     event: apigw::ApiGatewayCustomAuthorizerRequest,
     ctx: Context,
-) -> ApiResult<apigw::ApiGatewayCustomAuthorizerResponse<serde_json::Value>> {
+) -> apigw::ApiGatewayCustomAuthorizerResponse<serde_json::Value> {
     info!("Client token: {:?}", event.authorization_token);
     info!("Method ARN: {:?}", event.method_arn);
 
@@ -35,7 +87,15 @@ async fn authorizer_handler(
     // 1. Call out to OAuth provider
     // 2. Decode a JWT token inline
     // 3. Lookup in a self-managed DB
-    let principal_id = "user|a1b2c3d4";
+
+    let (principal_id, policy) = auth(&event).await.unwrap_or_else(|err| {
+        info!("authentication failure: {:?}", err);
+
+        (None, policy_builder_for_method(&event)
+                .deny_all_methods()
+                .build())
+    });
+    
 
     // you can send a 401 Unauthorized response to the client by failing like so:
     // Err(HandlerError{ msg: "Unauthorized".to_string(), backtrace: None });
@@ -53,25 +113,14 @@ async fn authorizer_handler(
     // made with the same token
 
     //the example policy below denies access to all resources in the RestApi
-    let tmp: Vec<&str> = event.method_arn.as_ref().unwrap().split(":").collect();
-    let api_gateway_arn_tmp: Vec<&str> = tmp[5].split("/").collect();
-    let aws_account_id = tmp[4];
-    let region = tmp[3];
-    let rest_api_id = api_gateway_arn_tmp[0];
-    let stage = api_gateway_arn_tmp[1];
-
-    let policy = ApiGatewayCustomAuthorizerPolicyBuilder::new(region, aws_account_id, rest_api_id, stage)
-        .deny_all_methods()?
-        .build();
     
     // new! -- add additional key-value pairs associated with the authenticated principal
     // these are made available by APIGW like so: $context.authorizer.<key>
     // additional context is cached
-    Ok(apigw::ApiGatewayCustomAuthorizerResponse {
-        principal_id: Some(principal_id.to_string()),
+    apigw::ApiGatewayCustomAuthorizerResponse {
+        principal_id: principal_id,
         policy_document: policy,
         context: HashMap::new(),
         usage_identifier_key: None,
-    })
+    }
 }
-

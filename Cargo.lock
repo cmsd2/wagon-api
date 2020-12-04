@@ -106,6 +106,8 @@ dependencies = [
  "log",
  "maplit",
  "reqwest",
+ "rusoto_core",
+ "rusoto_dynamodb",
  "serde",
  "serde_json",
  "simple-error",
