@@ -16,6 +16,7 @@ use std::pin::Pin;
 use api::error::ApiError;
 use api::result::ApiResult;
 use api::tokens;
+use api::{User, ApiRequestContext};
 
 type LambdaError = Box<dyn std::error::Error + Send + Sync + 'static>;
 type LambdaResult<T> = std::result::Result<T, LambdaError>;
@@ -35,6 +36,7 @@ async fn main(
             ApiError::NotAuthorized(_) => text_response(401, format!("Not Authorized")),
             ApiError::Database(s) => text_response(500, format!("Internal Server Error: {}", s)),
             ApiError::Other(s) => text_response(500, format!("Internal Server Error: {}", s)),
+            ApiError::SerializationError(s) => text_response(500, format!("Internal Server Error: {}", s)),
         })
     })
 }
@@ -47,11 +49,24 @@ async fn api_handler(
     log::debug!("{:?}", ctx);
     log::debug!("{:?}", req.request_context);
 
+    let body = req.body.as_ref()
+        .map(|body| serde_json::from_str::<serde_json::Value>(body))
+        .map_or(Ok(None), |v| v.map(Some))
+        .map_err(|err| ApiError::SerializationError(format!("{}", err)))?;
+    let user = req.request_context.principal()?;
+
     let router = router!(
         GET / => get_root,
         GET /api/token => get_token,
         POST /api/token => create_token,
+        PUT /api/v1/crates/new => new_crate,
+        GET /api/v1/crates => search_crates,
         GET /api/v1/crates/{library: String}/{version: String}/download => download_crate,
+        DELETE /api/v1/crates/{library: String}/{version: String}/yank => yank_crate,
+        PUT /api/v1/crates/{library: String}/{version: String}/unyank => unyank_crate,
+        GET /api/v1/crates/{library: String}/owners => get_crate_owners,
+        PUT /api/v1/crates/{library: String}/owners => add_crate_owner,
+        DELETE /api/v1/crates/{library: String}/owners => remove_crate_owner,
         _ => not_found,
     );
 
@@ -90,10 +105,73 @@ pub fn create_token<'a>(context: &'a apigw::ApiGatewayProxyRequestContext) -> Ap
     })
 }
 
+pub fn new_crate<'a>(
+    _context: &'a apigw::ApiGatewayProxyRequestContext
+) -> ApiFuture<'a> {
+    Box::pin(async {
+        not_implemented().await
+    })
+}
+
+pub fn search_crates<'a>(
+    _context: &'a apigw::ApiGatewayProxyRequestContext
+) -> ApiFuture<'a> {
+    Box::pin(async {
+        not_implemented().await
+    })
+}
+
 pub fn download_crate<'a>(
     _context: &'a apigw::ApiGatewayProxyRequestContext,
     _library: String,
     _version: String,
+) -> ApiFuture<'a> {
+    Box::pin(async {
+        not_implemented().await
+    })
+}
+
+pub fn yank_crate<'a>(
+    _context: &'a apigw::ApiGatewayProxyRequestContext,
+    _library: String,
+    _version: String,
+) -> ApiFuture<'a> {
+    Box::pin(async {
+        not_implemented().await
+    })
+}
+
+pub fn unyank_crate<'a>(
+    _context: &'a apigw::ApiGatewayProxyRequestContext,
+    _library: String,
+    _version: String,
+) -> ApiFuture<'a> {
+    Box::pin(async {
+        not_implemented().await
+    })
+}
+
+pub fn get_crate_owners<'a>(
+    _context: &'a apigw::ApiGatewayProxyRequestContext,
+    _library: String,
+) -> ApiFuture<'a> {
+    Box::pin(async {
+        not_implemented().await
+    })
+}
+
+pub fn add_crate_owner<'a>(
+    _context: &'a apigw::ApiGatewayProxyRequestContext,
+    _library: String,
+) -> ApiFuture<'a> {
+    Box::pin(async {
+        not_implemented().await
+    })
+}
+
+pub fn remove_crate_owner<'a>(
+    _context: &'a apigw::ApiGatewayProxyRequestContext,
+    _library: String,
 ) -> ApiFuture<'a> {
     Box::pin(async {
         not_implemented().await

@@ -5,6 +5,7 @@ use std::error;
 pub enum ApiError {
     NotAuthorized(String),
     Other(String),
+    SerializationError(String),
     Database(String),
 }
 

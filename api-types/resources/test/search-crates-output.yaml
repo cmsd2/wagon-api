@@ -1,0 +1,17 @@
+{
+  # Array of results.
+  "crates": [
+      {
+        # Name of the crate.
+        "name": "rand",
+        # The highest version available.
+        "max_version": "0.6.1",
+        # Textual description of the crate.
+        "description": "Random number generators and other randomness functionality.\n",
+      },
+    ],
+  "meta": {
+      # Total number of results available on the server.
+      "total": 119,
+    },
+}

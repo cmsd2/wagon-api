@@ -24,4 +24,4 @@ maplit = "1.0.2"
 rusoto_kms = "0.45.0"
 bytes = "0.5"
 base64 = "0.13.0"
-
+api-types = { path = "../api-types" }
