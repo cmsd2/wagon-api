@@ -14,6 +14,14 @@ lazy_static! {
     static ref KMS_CLIENT: KmsClient = KmsClient::new(Region::default());
 }
 
+pub async fn get_or_create_token(user_id: &str) -> ApiResult<String> {
+    if let Some(token) = get_user_token(user_id).await? {
+        Ok(token)
+    } else {
+        create_user_token(user_id).await
+    }
+}
+
 pub async fn get_user_token(user_id: &str) -> ApiResult<Option<String>> {
     let output = DYNAMODB_CLIENT.get_item(GetItemInput {
         key: hashmap! {

@@ -22,6 +22,13 @@ jobs:
         run: ./scripts/deps.sh
       - name: Package
         run: ./scripts/build.sh
+      - name: Archive production artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: lambdas
+          path: |
+            target/lambda-api.zip
+            target/lambda-authorizer.zip
       - name: Deploy
         id: deploy
         uses: youyo/aws-cdk-github-actions@v1

@@ -75,11 +75,10 @@ pub struct GetTokenResponse {
 pub fn get_token<'a>(context: &'a apigw::ApiGatewayProxyRequestContext) -> ApiFuture<'a> {
     Box::pin(async move {
         let principal_id = context.principal()?;
-        if let Some(token) = tokens::get_user_token(&principal_id).await? {
-            Ok(json_response(200, GetTokenResponse { token: Some(token) }))
-        } else {
-            Ok(json_response(404, GetTokenResponse { token: None }))
-        }
+        
+        let token = tokens::get_or_create_token(&principal_id).await?;
+
+        Ok(json_response(200, GetTokenResponse { token: Some(token) }))
     })
 }
 
