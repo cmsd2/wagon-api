@@ -100,6 +100,7 @@ dependencies = [
  "aws_lambda_events",
  "double-checked-cell-async",
  "env_logger",
+ "futures",
  "jsonwebtoken",
  "lambda",
  "lazy_static",

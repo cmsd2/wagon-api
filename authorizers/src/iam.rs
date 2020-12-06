@@ -1,7 +1,6 @@
 use serde::{Serialize, Deserialize};
 use serde_json;
 use aws_lambda_events::event::apigw;
-use crate::error::AuthError;
 use crate::result::AuthResult;
 
 pub static POLICY_VERSION: &str = "2012-10-17"; // override if necessary
@@ -94,11 +93,11 @@ impl ApiGatewayCustomAuthorizerPolicyBuilder {
         self.add_method(Effect::Deny, Method::All, "*").expect("deny all")
     }
 
-    pub fn allow_method(self, method: Method, resource: String) -> AuthResult<Self> {
+    pub fn allow_method<S: Into<String>>(self, method: Method, resource: S) -> AuthResult<Self> {
         self.add_method(Effect::Allow, method, resource)
     }
 
-    pub fn deny_method(self, method: Method, resource: String) -> AuthResult<Self> {
+    pub fn deny_method<S: Into<String>>(self, method: Method, resource: S) -> AuthResult<Self> {
         self.add_method(Effect::Deny, method, resource)
     }
 

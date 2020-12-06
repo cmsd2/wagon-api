@@ -1,0 +1,42 @@
+import * as cdk from "@aws-cdk/core";
+import * as lambda from "@aws-cdk/aws-lambda";
+import * as iam from "@aws-cdk/aws-iam";
+import * as path from "path";
+import * as apigw from "@aws-cdk/aws-apigateway";
+import * as cw from "@aws-cdk/aws-cloudwatch";
+import * as ssm from "@aws-cdk/aws-ssm";
+import * as logs from "@aws-cdk/aws-logs";
+import * as ddb from "@aws-cdk/aws-dynamodb";
+import { DashboardStack } from "./dashboard-stack";
+import { WagonApiStack } from "./wagon-api-stack";
+
+export interface TokensApiStackProps extends cdk.StackProps {
+  dashboard: cw.Dashboard,
+}
+
+export class TokensDbStack extends cdk.Stack {
+    tokensTable: ddb.Table;
+    tokensIndexName: string;
+
+    constructor(scope: cdk.Construct, id: string, props: TokensApiStackProps) {
+        super(scope, id, props);
+
+        this.tokensTable = new ddb.Table(this, 'Tokens', {
+            partitionKey: {
+                name: 'user_id', type: ddb.AttributeType.STRING
+            },
+            billingMode: ddb.BillingMode.PAY_PER_REQUEST,
+            encryption: ddb.TableEncryption.DEFAULT,
+        });
+
+        this.tokensIndexName = 'TokensIndex';
+        this.tokensTable.addGlobalSecondaryIndex({
+            indexName: this.tokensIndexName,
+            partitionKey: {
+                name: 'token',
+                type: ddb.AttributeType.STRING,
+            },
+            projectionType: ddb.ProjectionType.KEYS_ONLY,
+        });
+    }
+}

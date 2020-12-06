@@ -47,9 +47,12 @@ impl AuthorizationHeader {
 
 pub async fn lookup_token(token: &str) -> AuthResult<Option<String>> {
     let results = DYNAMODB_CLIENT.query(QueryInput {
-        key_condition_expression: Some("token = :token".to_string()),
+        key_condition_expression: Some("#T = :token".to_string()),
         expression_attribute_values: Some(hashmap! {
             ":token".to_string() => AttributeValue { s: Some(token.to_owned()), ..Default::default() }
+        }),
+        expression_attribute_names: Some(hashmap! {
+            "#T".to_string() => "token".to_string()
         }),
         table_name: TOKENS_TABLE.clone(),
         index_name: Some(TOKENS_TABLE_TOKENS_INDEX.clone()),
@@ -60,6 +63,8 @@ pub async fn lookup_token(token: &str) -> AuthResult<Option<String>> {
 
             AuthError::DatabaseError(format!("error querying database for api key"))
         })?;
+
+    log::debug!("{:?}", results);
 
     Ok(results
         .items

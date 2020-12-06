@@ -6,72 +6,76 @@ import * as apigw from "@aws-cdk/aws-apigateway";
 import * as cw from "@aws-cdk/aws-cloudwatch";
 import * as ssm from "@aws-cdk/aws-ssm";
 import * as logs from "@aws-cdk/aws-logs";
+import { TokensDbStack } from "./tokens-db-stack";
+import { LogsWidgetStack } from "./logs-widget-stack";
+import { ApiHandlerStack } from "./api-handler-stack";
 
 export interface WagonApiStackProps extends cdk.StackProps {
   dashboard: cw.Dashboard;
   openid_config_uri: string;
   openid_aud: string;
+  tokens_db_stack: TokensDbStack;
 }
 
 export class WagonApiStack extends cdk.Stack {
-  jwtAuthorizerFunction: lambda.Function;
-  jwtAuthorizer: apigw.TokenAuthorizer;
-  apiResource: apigw.Resource;
-  logGroup: logs.LogGroup;
+  api: apigw.RestApi;
 
   constructor(scope: cdk.Construct, id: string, props: WagonApiStackProps) {
     super(scope, id, props);
 
-    const authorizerLambdaRole = new iam.Role(this, "AuthorizerFunctionRole", {
+    const logGroup = new logs.LogGroup(this, id + "ApiLogs");
+
+    const handlerStack = new ApiHandlerStack(this, 'ApiHandler', {
+      openid_aud: props.openid_aud,
+      openid_config_uri: props.openid_config_uri,
+      token_db_stack: props.tokens_db_stack,
+    });
+
+    const authorizerRole = new iam.Role(this, "AuthorizerFunctionRole", {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
     });
 
-    authorizerLambdaRole.addManagedPolicy(
+    authorizerRole.addManagedPolicy(
       iam.ManagedPolicy.fromAwsManagedPolicyName(
-        "service-role/AWSLambdaBasicExecutionRole"
+          "service-role/AWSLambdaBasicExecutionRole"
       )
     );
 
-    this.jwtAuthorizerFunction = new lambda.Function(this, "JwtAuthorizerFunction", {
-      runtime: lambda.Runtime.PROVIDED_AL2,
-      handler: "unused",
-      code: lambda.Code.fromAsset(path.join("..", "target", "lambda-jwt_authorizer.zip")),
-      memorySize: 128,
-      role: authorizerLambdaRole,
-      timeout: cdk.Duration.seconds(2),
-      environment: {
-        RUST_LOG: 'info,jwt_authorizer=debug',
-        OPENID_CONFIGURATION_URI: props.openid_config_uri,
-        OPENID_AUD: props.openid_aud,
-      },
+    props.tokens_db_stack.tokensTable.grantReadWriteData(authorizerRole);
+
+    const authorizerHandler = new lambda.Function(this, "AuthorizerFunction", {
+        runtime: lambda.Runtime.PROVIDED_AL2,
+        handler: "unused",
+        code: lambda.Code.fromAsset(path.join("..", "target", "lambda-authorizer.zip")),
+        memorySize: 128,
+        role: authorizerRole,
+        timeout: cdk.Duration.seconds(2),
+        environment: {
+            RUST_LOG: 'info,authorizer=debug',
+            OPENID_CONFIGURATION_URI: props.openid_config_uri,
+            OPENID_AUD: props.openid_aud,
+            TOKENS_TABLE: props.tokens_db_stack.tokensTable.tableName,
+            TOKENS_TABLE_TOKENS_INDEX: props.tokens_db_stack.tokensIndexName,
+        },
     });
 
-    this.jwtAuthorizer = new apigw.TokenAuthorizer(this, 'JwtAuthorizer', {
-      handler: this.jwtAuthorizerFunction
+    const authorizer = new apigw.TokenAuthorizer(this, "Authorizer", {
+        handler: authorizerHandler,
     });
 
-    const lambdaRole = new iam.Role(this, "FunctionRole", {
-      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
-    });
-
-    lambdaRole.addManagedPolicy(
-      iam.ManagedPolicy.fromAwsManagedPolicyName(
-        "service-role/AWSLambdaBasicExecutionRole"
-      )
-    );
-
-    this.logGroup = new logs.LogGroup(this, id + "ApiLogs");
-
-    const api = new apigw.RestApi(this, id + "RestApi", {
+    const api = new apigw.LambdaRestApi(this, id + "RestApi", {
       endpointTypes: [apigw.EndpointType.REGIONAL],
       deployOptions: {
         loggingLevel: apigw.MethodLoggingLevel.INFO,
-        accessLogDestination: new apigw.LogGroupLogDestination(this.logGroup),
+        accessLogDestination: new apigw.LogGroupLogDestination(logGroup),
         accessLogFormat: apigw.AccessLogFormat.jsonWithStandardFields()
       },
+      handler: handlerStack.handler,
+      defaultMethodOptions: {
+        authorizer: authorizer,
+      },
+      proxy: true,
     });
-
-    this.apiResource = api.root.addResource('api');
 
     new cdk.CfnOutput(this, 'WagonApiDomainNameOutput', {
       value: `${api.restApiId}.execute-api.${this.region}.amazonaws.com`,
@@ -91,6 +95,15 @@ export class WagonApiStack extends cdk.Stack {
     new ssm.StringParameter(this, "WagonApiPathParameter", {
       stringValue: `/${api.deploymentStage.stageName}`,
       parameterName: "wagon-api-path",
+    });
+
+    new LogsWidgetStack(this, "WagonLogsWidget", {
+      dashboard: props.dashboard,
+      logGroupNames: [
+          handlerStack.handler.logGroup.logGroupName,
+          authorizerHandler.logGroup.logGroupName,
+          logGroup.logGroupName,
+      ]
     });
   }
 }

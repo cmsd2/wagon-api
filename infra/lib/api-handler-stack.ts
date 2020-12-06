@@ -9,17 +9,19 @@ import * as logs from "@aws-cdk/aws-logs";
 import * as ddb from "@aws-cdk/aws-dynamodb";
 import { DashboardStack } from "./dashboard-stack";
 import { WagonApiStack } from "./wagon-api-stack";
+import { TokensDbStack } from "./tokens-db-stack";
 
-export interface V1ApiStackProps extends cdk.StackProps {
-  dashboard: cw.Dashboard,
-  api: WagonApiStack,
+export interface ApiHandlerStackProps extends cdk.StackProps {
+    openid_config_uri: string;
+    openid_aud: string;
+    token_db_stack: TokensDbStack;
 }
 
-export class V1ApiStack extends cdk.Stack {
-    tokensTable: ddb.Table;
+export class ApiHandlerStack extends cdk.Stack {
     handler: lambda.Function;
+    role: iam.Role;
 
-    constructor(scope: cdk.Construct, id: string, props: V1ApiStackProps) {
+    constructor(scope: cdk.Construct, id: string, props: ApiHandlerStackProps) {
         super(scope, id, props);
 
         const lambdaRole = new iam.Role(this, "FunctionRole", {
@@ -31,7 +33,14 @@ export class V1ApiStack extends cdk.Stack {
                 "service-role/AWSLambdaBasicExecutionRole"
             )
         );
-
+    
+        lambdaRole.addToPolicy(new iam.PolicyStatement({
+            resources: ['*'],
+            actions: ['kms:GenerateRandom']
+        }));
+    
+        props.token_db_stack.tokensTable.grantReadWriteData(lambdaRole);
+    
         this.handler = new lambda.Function(this, "Function", {
             runtime: lambda.Runtime.PROVIDED_AL2,
             handler: "unused",
@@ -40,14 +49,10 @@ export class V1ApiStack extends cdk.Stack {
             role: lambdaRole,
             timeout: cdk.Duration.seconds(2),
             environment: {
-                RUST_LOG: 'info,api=debug'
+                RUST_LOG: 'info,api=debug',
+                TOKENS_TABLE: props.token_db_stack.tokensTable.tableName,
+                TOKENS_TABLE_TOKENS_INDEX: props.token_db_stack.tokensIndexName,
             },
-        });
-
-        props.api.apiResource.addResource('v1').addProxy({
-            anyMethod: true,
-            defaultMethodOptions: {},
-            defaultIntegration: new apigw.LambdaIntegration(this.handler, {proxy: true})
         });
     }
 }

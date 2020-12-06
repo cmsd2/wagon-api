@@ -6,6 +6,7 @@ aws-build lambda --package openssl-devel --bin api
 
 cp target/latest-lambda target/lambda-api.zip
 
-aws-build lambda --package openssl-devel --bin jwt_authorizer
+aws-build lambda --package openssl-devel --bin authorizer
 
-cp target/latest-lambda target/lambda-jwt_authorizer.zip
+cp target/latest-lambda target/lambda-authorizer.zip
+

@@ -7,6 +7,7 @@ pub enum AuthError {
     SerializationError(serde_json::Error),
     HttpError(reqwest::Error),
     JwtError(String),
+    ApiKeyError(String),
     InputError(String),
     DatabaseError(String),
 }
