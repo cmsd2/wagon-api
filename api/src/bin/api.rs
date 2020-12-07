@@ -57,6 +57,8 @@ async fn api_handler(
         .map_err(|err| ApiError::SerializationError(format!("{}", err)))?;
     let user = req.request_context.principal()?;
 
+    log::debug!("{:?}", body);
+
     let router = router!(
         GET / => get_root,
         GET /api/token => get_token,

@@ -78,7 +78,9 @@ export class WagonApiStack extends cdk.Stack {
         //contentHandling: apigw.ContentHandling.CONVERT_TO_TEXT,
         passthroughBehavior: apigw.PassthroughBehavior.WHEN_NO_MATCH,
       }),
-      binaryMediaTypes: [],
+      binaryMediaTypes: [
+        "application/octet-stream"
+      ],
     });
 
     /*
@@ -108,6 +110,10 @@ export class WagonApiStack extends cdk.Stack {
     const api_v1_crates_resource_new = api_v1_crates_resource.addResource('new');
     api_v1_crates_resource_new.addMethod('PUT', new apigw.LambdaIntegration(handlerStack.handler, {
       contentHandling: apigw.ContentHandling.CONVERT_TO_TEXT,
+      requestTemplates: {
+        'application/octet-stream': JSON.stringify({ body: '$input.body', contentType: 'octet-stream' }),
+        '*/*': JSON.stringify({ body: '$input.body', contentType: 'any' })
+      }
     }));
 
     const api_v1_crates_crate_resource = api_v1_crates_resource.addResource('{crate}');
