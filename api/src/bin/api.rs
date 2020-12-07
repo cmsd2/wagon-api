@@ -45,9 +45,11 @@ async fn api_handler(
     req: apigw::ApiGatewayProxyRequest,
     ctx: Context,
 ) -> ApiResult<apigw::ApiGatewayProxyResponse> {
-    log::info!("{:?} {:?}", req.http_method, req.path);
+    log::info!("{:?} {:?} is_base64_encoded={:?}", req.http_method, req.path, req.is_base64_encoded);
     log::debug!("{:?}", ctx);
     log::debug!("{:?}", req.request_context);
+    log::debug!("{:?}", req.query_string_parameters);
+    log::debug!("{:?}", req.headers);
 
     let body = req.body.as_ref()
         .map(|body| serde_json::from_str::<serde_json::Value>(body))
@@ -241,5 +243,13 @@ impl OpenIdContext for apigw::ApiGatewayProxyRequestContext {
                 serde_json::from_value(v.to_owned())
                     .map_err(|err| ApiError::NotAuthorized(format!("principal deserialization error: {}", err))))
             
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn parse_create_crate_input() {
+
     }
 }
