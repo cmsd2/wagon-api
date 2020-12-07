@@ -63,19 +63,71 @@ export class WagonApiStack extends cdk.Stack {
         handler: authorizerHandler,
     });
 
-    const api = new apigw.LambdaRestApi(this, id + "RestApi", {
+    const api = new apigw.RestApi(this, id + "RestApi", {
       endpointTypes: [apigw.EndpointType.REGIONAL],
       deployOptions: {
         loggingLevel: apigw.MethodLoggingLevel.INFO,
         accessLogDestination: new apigw.LogGroupLogDestination(logGroup),
         accessLogFormat: apigw.AccessLogFormat.jsonWithStandardFields()
       },
-      handler: handlerStack.handler,
       defaultMethodOptions: {
         authorizer: authorizer,
       },
-      proxy: true,
+      defaultIntegration: new apigw.LambdaIntegration(handlerStack.handler, {
+        proxy: true,
+        //contentHandling: apigw.ContentHandling.CONVERT_TO_TEXT,
+        passthroughBehavior: apigw.PassthroughBehavior.WHEN_NO_MATCH,
+      }),
+      binaryMediaTypes: [],
     });
+
+    /*
+    GET / => get_root,
+        GET /api/token => get_token,
+        POST /api/token => create_token,
+        PUT /api/v1/crates/new => new_crate,
+        GET /api/v1/crates => search_crates,
+        GET /api/v1/crates/{library: String}/{version: String}/download => download_crate,
+        DELETE /api/v1/crates/{library: String}/{version: String}/yank => yank_crate,
+        PUT /api/v1/crates/{library: String}/{version: String}/unyank => unyank_crate,
+        GET /api/v1/crates/{library: String}/owners => get_crate_owners,
+        PUT /api/v1/crates/{library: String}/owners => add_crate_owner,
+        DELETE /api/v1/crates/{library: String}/owners => remove_crate_owner,
+    */
+    const api_resource = api.root.addResource('api');
+
+    const api_token_resource = api_resource.addResource('token');
+    api_token_resource.addMethod('GET');
+    api_token_resource.addMethod('POST');
+
+    const api_v1_resource = api_resource.addResource('v1');
+    
+    const api_v1_crates_resource = api_v1_resource.addResource('crates');
+    api_v1_crates_resource.addMethod('GET');
+
+    const api_v1_crates_resource_new = api_v1_crates_resource.addResource('new');
+    api_v1_crates_resource_new.addMethod('PUT', new apigw.LambdaIntegration(handlerStack.handler, {
+      contentHandling: apigw.ContentHandling.CONVERT_TO_TEXT,
+    }));
+
+    const api_v1_crates_crate_resource = api_v1_crates_resource.addResource('{crate}');
+
+    const api_v1_crates_crate_owners_resource = api_v1_crates_crate_resource.addResource('owners');
+    api_v1_crates_crate_owners_resource.addMethod('GET');
+    api_v1_crates_crate_owners_resource.addMethod('PUT');
+    api_v1_crates_crate_owners_resource.addMethod('DELETE');
+
+    const api_v1_crates_crate_version_resource = api_v1_crates_crate_resource.addResource('{version}');
+    
+    const api_v1_crates_crate_version_download_resource = api_v1_crates_crate_version_resource.addResource('download');
+    api_v1_crates_crate_version_download_resource.addMethod('GET');
+
+    const api_v1_crates_crate_version_yank_resource = api_v1_crates_crate_version_resource.addResource('yank');
+    api_v1_crates_crate_version_download_resource.addMethod('DELETE');
+    
+    const api_v1_crates_crate_version_unyank_resource = api_v1_crates_crate_version_resource.addResource('unyank');
+    api_v1_crates_crate_version_download_resource.addMethod('PUT');
+
 
     new cdk.CfnOutput(this, 'WagonApiDomainNameOutput', {
       value: `${api.restApiId}.execute-api.${this.region}.amazonaws.com`,
