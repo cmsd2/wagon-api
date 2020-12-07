@@ -7,6 +7,7 @@ pub enum ApiError {
     Other(String),
     SerializationError(String),
     Database(String),
+    InvalidInput(String),
 }
 
 impl error::Error for ApiError {}

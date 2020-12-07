@@ -10,13 +10,16 @@ use lambda::{lambda, Context};
 use log;
 use simple_error::bail;
 use serde::{Serialize};
+use serde::de::DeserializeOwned;
 use futures_core::Future;
 use std::pin::Pin;
+use bytes::{Buf, Bytes};
 
 use api::error::ApiError;
 use api::result::ApiResult;
 use api::tokens;
 use api::{User, ApiRequestContext};
+use api_types::create::{CreateCrateInput};
 
 type LambdaError = Box<dyn std::error::Error + Send + Sync + 'static>;
 type LambdaResult<T> = std::result::Result<T, LambdaError>;
@@ -37,8 +40,30 @@ async fn main(
             ApiError::Database(s) => text_response(500, format!("Internal Server Error: {}", s)),
             ApiError::Other(s) => text_response(500, format!("Internal Server Error: {}", s)),
             ApiError::SerializationError(s) => text_response(500, format!("Internal Server Error: {}", s)),
+            ApiError::InvalidInput(s) => text_response(400, format!("Bad Request: {}", s)),
         })
     })
+}
+
+pub struct RequestContext<'a> {
+    pub principal_id: String,
+    request: &'a apigw::ApiGatewayProxyRequest,
+}
+
+impl <'a> RequestContext<'a> {
+    fn json_body<T: DeserializeOwned>(&self) -> ApiResult<Option<T>> {
+        self.request.body.as_ref()
+            .map(|body| serde_json::from_str(body))
+            .map_or(Ok(None), |v| v.map(Some))
+            .map_err(|err| ApiError::SerializationError(format!("{}", err)))
+    }
+
+    fn binary_body(&self) -> ApiResult<Option<Bytes>> {
+        self.request.body.as_ref()
+            .map(|body| base64::decode(body).map(Bytes::from))
+            .map_or(Ok(None), |v| v.map(Some))
+            .map_err(|err| ApiError::SerializationError(format!("{}", err)))
+    }
 }
 
 async fn api_handler(
@@ -50,14 +75,6 @@ async fn api_handler(
     log::debug!("{:?}", req.request_context);
     log::debug!("{:?}", req.query_string_parameters);
     log::debug!("{:?}", req.headers);
-
-    let body = req.body.as_ref()
-        .map(|body| serde_json::from_str::<serde_json::Value>(body))
-        .map_or(Ok(None), |v| v.map(Some))
-        .map_err(|err| ApiError::SerializationError(format!("{}", err)))?;
-    let user = req.request_context.principal()?;
-
-    log::debug!("{:?}", body);
 
     let router = router!(
         GET / => get_root,
@@ -77,10 +94,15 @@ async fn api_handler(
     let method = get_method(&req)?;
     let path = get_path(&req)?;
 
-    router(&req.request_context, method, &path).await
+    let request_context = RequestContext {
+        principal_id: req.request_context.principal()?,
+        request: &req,
+    };
+
+    router(&request_context, method, &path).await
 }
 
-pub fn get_root<'a>(_context: &'a apigw::ApiGatewayProxyRequestContext) -> ApiFuture<'a> {
+pub fn get_root<'a>(_context: &'a RequestContext<'a>) -> ApiFuture<'a> {
     Box::pin(async {
         not_implemented().await
     })
@@ -91,7 +113,7 @@ pub struct GetTokenResponse {
     pub token: Option<String>,
 }
 
-pub fn get_token<'a>(context: &'a apigw::ApiGatewayProxyRequestContext) -> ApiFuture<'a> {
+pub fn get_token<'a>(context: &'a RequestContext<'a>) -> ApiFuture<'a> {
     Box::pin(async move {
         let principal_id = context.principal()?;
         
@@ -101,16 +123,15 @@ pub fn get_token<'a>(context: &'a apigw::ApiGatewayProxyRequestContext) -> ApiFu
     })
 }
 
-pub fn create_token<'a>(context: &'a apigw::ApiGatewayProxyRequestContext) -> ApiFuture<'a> {
+pub fn create_token<'a>(context: &'a RequestContext<'a>) -> ApiFuture<'a> {
     Box::pin(async move {
-        let principal_id = context.principal()?;
-        let token = tokens::create_user_token(&principal_id).await?;
+        let token = tokens::create_user_token(&context.principal_id).await?;
         Ok(json_response(201, GetTokenResponse { token: Some(token) }))
     })
 }
 
 pub fn new_crate<'a>(
-    _context: &'a apigw::ApiGatewayProxyRequestContext
+    _context: &'a RequestContext<'a>
 ) -> ApiFuture<'a> {
     Box::pin(async {
         not_implemented().await
@@ -118,7 +139,7 @@ pub fn new_crate<'a>(
 }
 
 pub fn search_crates<'a>(
-    _context: &'a apigw::ApiGatewayProxyRequestContext
+    _context: &'a RequestContext<'a>
 ) -> ApiFuture<'a> {
     Box::pin(async {
         not_implemented().await
@@ -126,17 +147,27 @@ pub fn search_crates<'a>(
 }
 
 pub fn download_crate<'a>(
-    _context: &'a apigw::ApiGatewayProxyRequestContext,
+    context: &'a RequestContext<'a>,
     _library: String,
     _version: String,
 ) -> ApiFuture<'a> {
-    Box::pin(async {
+    Box::pin(async move {
+        let mut body = context.binary_body()?.ok_or_else(|| ApiError::InvalidInput(format!("empty body")))?;
+        let json_len = body.get_u32_le();
+        let mut json_body_bytes = body.copy_to_bytes(json_len as usize);
+        let json_body: CreateCrateInput = serde_json::from_reader(json_body_bytes.reader())
+            .map_err(|err| ApiError::InvalidInput(format!("error deserialising json body: {}", err)))?;
+        let crate_len = body.get_u32_le();
+        let crate_body_bytes = body.copy_to_bytes(crate_len as usize);
+
+        log::debug!("{:?}", json_body);
+        log::debug!("crate len: {} bytes", crate_len);
         not_implemented().await
     })
 }
 
 pub fn yank_crate<'a>(
-    _context: &'a apigw::ApiGatewayProxyRequestContext,
+    _context: &'a RequestContext<'a>,
     _library: String,
     _version: String,
 ) -> ApiFuture<'a> {
@@ -146,7 +177,7 @@ pub fn yank_crate<'a>(
 }
 
 pub fn unyank_crate<'a>(
-    _context: &'a apigw::ApiGatewayProxyRequestContext,
+    _context: &'a RequestContext<'a>,
     _library: String,
     _version: String,
 ) -> ApiFuture<'a> {
@@ -156,7 +187,7 @@ pub fn unyank_crate<'a>(
 }
 
 pub fn get_crate_owners<'a>(
-    _context: &'a apigw::ApiGatewayProxyRequestContext,
+    _context: &'a RequestContext<'a>,
     _library: String,
 ) -> ApiFuture<'a> {
     Box::pin(async {
@@ -165,7 +196,7 @@ pub fn get_crate_owners<'a>(
 }
 
 pub fn add_crate_owner<'a>(
-    _context: &'a apigw::ApiGatewayProxyRequestContext,
+    _context: &'a RequestContext<'a>,
     _library: String,
 ) -> ApiFuture<'a> {
     Box::pin(async {
@@ -174,7 +205,7 @@ pub fn add_crate_owner<'a>(
 }
 
 pub fn remove_crate_owner<'a>(
-    _context: &'a apigw::ApiGatewayProxyRequestContext,
+    _context: &'a RequestContext<'a>,
     _library: String,
 ) -> ApiFuture<'a> {
     Box::pin(async {
@@ -182,7 +213,7 @@ pub fn remove_crate_owner<'a>(
     })
 }
 
-pub fn not_found<'a>(_context: &'a apigw::ApiGatewayProxyRequestContext) -> ApiFuture<'a> {
+pub fn not_found<'a>(_context: &'a RequestContext<'a>) -> ApiFuture<'a> {
     Box::pin(async {
         Ok(text_response(404, "Not Found"))
     })
@@ -245,6 +276,12 @@ impl OpenIdContext for apigw::ApiGatewayProxyRequestContext {
                 serde_json::from_value(v.to_owned())
                     .map_err(|err| ApiError::NotAuthorized(format!("principal deserialization error: {}", err))))
             
+    }
+}
+
+impl <'a> OpenIdContext for RequestContext<'a> {
+    fn principal(&self) -> ApiResult<String> {
+        Ok(self.principal_id.clone())
     }
 }
 
