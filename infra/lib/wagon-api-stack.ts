@@ -111,9 +111,9 @@ export class WagonApiStack extends cdk.Stack {
     api_v1_crates_resource_new.addMethod('PUT', new apigw.LambdaIntegration(handlerStack.handler, {
       contentHandling: apigw.ContentHandling.CONVERT_TO_TEXT,
       requestTemplates: {
-        'application/octet-stream': JSON.stringify({ body: '$input.body', contentType: 'octet-stream' }),
-        '*/*': JSON.stringify({ body: '$input.body', contentType: 'any' })
-      }
+        'application/octet-stream': JSON.stringify({ body: '$input.body' }),
+      },
+      passthroughBehavior: apigw.PassthroughBehavior.WHEN_NO_MATCH,
     }));
 
     const api_v1_crates_crate_resource = api_v1_crates_resource.addResource('{crate}');
