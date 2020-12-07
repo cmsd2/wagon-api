@@ -131,9 +131,20 @@ pub fn create_token<'a>(context: &'a RequestContext<'a>) -> ApiFuture<'a> {
 }
 
 pub fn new_crate<'a>(
-    _context: &'a RequestContext<'a>
+    context: &'a RequestContext<'a>
 ) -> ApiFuture<'a> {
-    Box::pin(async {
+    Box::pin(async move {
+        let mut body = context.binary_body()?.ok_or_else(|| ApiError::InvalidInput(format!("empty body")))?;
+        let json_len = body.get_u32_le();
+        let mut json_body_bytes = body.copy_to_bytes(json_len as usize);
+        let json_body: CreateCrateInput = serde_json::from_reader(json_body_bytes.reader())
+            .map_err(|err| ApiError::InvalidInput(format!("error deserialising json body: {}", err)))?;
+        let crate_len = body.get_u32_le();
+        let crate_body_bytes = body.copy_to_bytes(crate_len as usize);
+
+        log::debug!("{:?}", json_body);
+        log::debug!("crate len: {} bytes", crate_len);
+
         not_implemented().await
     })
 }
@@ -152,16 +163,6 @@ pub fn download_crate<'a>(
     _version: String,
 ) -> ApiFuture<'a> {
     Box::pin(async move {
-        let mut body = context.binary_body()?.ok_or_else(|| ApiError::InvalidInput(format!("empty body")))?;
-        let json_len = body.get_u32_le();
-        let mut json_body_bytes = body.copy_to_bytes(json_len as usize);
-        let json_body: CreateCrateInput = serde_json::from_reader(json_body_bytes.reader())
-            .map_err(|err| ApiError::InvalidInput(format!("error deserialising json body: {}", err)))?;
-        let crate_len = body.get_u32_le();
-        let crate_body_bytes = body.copy_to_bytes(crate_len as usize);
-
-        log::debug!("{:?}", json_body);
-        log::debug!("crate len: {} bytes", crate_len);
         not_implemented().await
     })
 }
