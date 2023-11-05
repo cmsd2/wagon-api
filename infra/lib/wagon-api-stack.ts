@@ -1,33 +1,50 @@
-import * as cdk from "@aws-cdk/core";
-import * as lambda from "@aws-cdk/aws-lambda";
-import * as iam from "@aws-cdk/aws-iam";
+import { Construct } from 'constructs';
+import * as cdk from "aws-cdk-lib";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as path from "path";
-import * as apigw from "@aws-cdk/aws-apigateway";
-import * as cw from "@aws-cdk/aws-cloudwatch";
-import * as ssm from "@aws-cdk/aws-ssm";
-import * as logs from "@aws-cdk/aws-logs";
+import * as apigw from "aws-cdk-lib/aws-apigateway";
+import * as cw from "aws-cdk-lib/aws-cloudwatch";
+import * as ssm from "aws-cdk-lib/aws-ssm";
+import * as logs from "aws-cdk-lib/aws-logs";
+import * as cognito from "aws-cdk-lib/aws-cognito"
+import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import { TokensDbStack } from "./tokens-db-stack";
 import { LogsWidgetStack } from "./logs-widget-stack";
 import { ApiHandlerStack } from "./api-handler-stack";
+import { SSMParameterReader } from './ssm-param-reader';
 
 export interface WagonApiStackProps extends cdk.StackProps {
   dashboard: cw.Dashboard;
-  openid_config_uri: string;
-  openid_aud: string;
+  user_pool_id: string;
   tokens_db_stack: TokensDbStack;
+  apiDomain: string;
+  zoneName: string;
+  certParamName: string;
 }
 
 export class WagonApiStack extends cdk.Stack {
   api: apigw.RestApi;
+  domainName: string;
+  cert: acm.ICertificate;
 
-  constructor(scope: cdk.Construct, id: string, props: WagonApiStackProps) {
+  constructor(scope: Construct, id: string, props: WagonApiStackProps) {
     super(scope, id, props);
+
+    const certArn = new SSMParameterReader(this, "CertArnReader", {
+      parameterName: props.certParamName,
+      region: "us-east-1",
+    }).getParameterValue();
+
+    this.cert = acm.Certificate.fromCertificateArn(this, "Cert", certArn);
+
+    this.domainName = `${props.apiDomain}.${props.zoneName}`;
+
+    const userPool = cognito.UserPool.fromUserPoolId(this, "UserPool", props.user_pool_id);
 
     const logGroup = new logs.LogGroup(this, id + "ApiLogs");
 
     const handlerStack = new ApiHandlerStack(this, 'ApiHandler', {
-      openid_aud: props.openid_aud,
-      openid_config_uri: props.openid_config_uri,
       token_db_stack: props.tokens_db_stack,
     });
 
@@ -43,28 +60,39 @@ export class WagonApiStack extends cdk.Stack {
 
     props.tokens_db_stack.tokensTable.grantReadWriteData(authorizerRole);
 
-    const authorizerHandler = new lambda.Function(this, "AuthorizerFunction", {
-        runtime: lambda.Runtime.PROVIDED_AL2,
-        handler: "unused",
-        code: lambda.Code.fromAsset(path.join("..", "target", "lambda-authorizer.zip")),
-        memorySize: 128,
-        role: authorizerRole,
-        timeout: cdk.Duration.seconds(2),
-        environment: {
-            RUST_LOG: 'info,authorizer=debug',
-            OPENID_CONFIGURATION_URI: props.openid_config_uri,
-            OPENID_AUD: props.openid_aud,
-            TOKENS_TABLE: props.tokens_db_stack.tokensTable.tableName,
-            TOKENS_TABLE_TOKENS_INDEX: props.tokens_db_stack.tokensIndexName,
-        },
-    });
+    // const authorizerHandler = new lambda.Function(this, "AuthorizerFunction", {
+    //     runtime: lambda.Runtime.PROVIDED_AL2,
+    //     handler: "unused",
+    //     code: lambda.Code.fromAsset(path.join("..", "target", "lambda-authorizer.zip")),
+    //     memorySize: 128,
+    //     role: authorizerRole,
+    //     timeout: cdk.Duration.seconds(2),
+    //     environment: {
+    //         RUST_LOG: 'info,authorizer=debug',
+    //         OPENID_CONFIGURATION_URI: props.openid_config_uri,
+    //         OPENID_AUD: props.openid_aud,
+    //         TOKENS_TABLE: props.tokens_db_stack.tokensTable.tableName,
+    //         TOKENS_TABLE_TOKENS_INDEX: props.tokens_db_stack.tokensIndexName,
+    //     },
+    // });
 
-    const authorizer = new apigw.TokenAuthorizer(this, "Authorizer", {
-        handler: authorizerHandler,
+    // const authorizer = new apigw.TokenAuthorizer(this, "Authorizer", {
+    //     handler: authorizerHandler,
+    // });
+
+    const authorizer = new apigw.CognitoUserPoolsAuthorizer(this, "Authorizer", {
+      cognitoUserPools: [userPool],
+      authorizerName: "WagonApiAuthorizer",
+      identitySource: apigw.IdentitySource.header("Authorization"),
     });
 
     const api = new apigw.RestApi(this, id + "RestApi", {
-      endpointTypes: [apigw.EndpointType.REGIONAL],
+      endpointTypes: [apigw.EndpointType.EDGE],
+      domainName: {
+        domainName: this.domainName,
+        certificate: this.cert,
+        endpointType: apigw.EndpointType.EDGE,
+      },
       deployOptions: {
         loggingLevel: apigw.MethodLoggingLevel.INFO,
         accessLogDestination: new apigw.LogGroupLogDestination(logGroup),
@@ -99,8 +127,8 @@ export class WagonApiStack extends cdk.Stack {
     const api_resource = api.root.addResource('api');
 
     const api_token_resource = api_resource.addResource('token');
-    api_token_resource.addMethod('GET');
-    api_token_resource.addMethod('POST');
+    api_token_resource.addMethod('GET', undefined, {authorizationScopes: ['wagon-api/read', 'wagon-api/write']});
+    api_token_resource.addMethod('POST', undefined, {authorizationScopes: ['wagon-api/write']});
 
     const api_v1_resource = api_resource.addResource('v1');
     
@@ -159,7 +187,6 @@ export class WagonApiStack extends cdk.Stack {
       dashboard: props.dashboard,
       logGroupNames: [
           handlerStack.handler.logGroup.logGroupName,
-          authorizerHandler.logGroup.logGroupName,
           logGroup.logGroupName,
       ]
     });

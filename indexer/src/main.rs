@@ -14,18 +14,13 @@ use db::DbConfig;
 use repo::Repo;
 use result::IndexerResult;
 use rusoto_dynamodb::DynamoDbClient;
-use tokio::runtime;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::init();
     let config = Config::load().expect("config");
 
-    let mut rt = runtime::Builder::new()
-        .threaded_scheduler()
-        .enable_all()
-        .build()
-        .expect("can't start tokio runtime");
-    rt.block_on(index(&config)).expect("index");
+    index(&config).await.expect("index");
 }
 
 pub async fn index(config: &Config) -> IndexerResult<()> {

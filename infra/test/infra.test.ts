@@ -5,7 +5,7 @@ import {
   haveResource,
 } from "@aws-cdk/assert";
 import "@aws-cdk/assert/jest";
-import * as cdk from "@aws-cdk/core";
+import * as cdk from "aws-cdk-lib";
 import { DashboardStack } from "../lib/dashboard-stack";
 import { IndexerStack } from "../lib/indexer-stack";
 import * as Infra from "../lib/wagon-api-stack";

@@ -1,31 +1,38 @@
-use std::collections::HashMap;
+use aws_lambda_events::apigw;
 use futures::Future;
+use lambda_runtime::Context;
+use serde_json::{json, Value};
 use std::pin::Pin;
-use aws_lambda_events::event::apigw;
-use lambda::Context;
 
-pub mod result;
 pub mod error;
 pub mod iam;
 pub mod jwt;
+pub mod result;
 pub mod token;
 
-use result::AuthResult;
 use iam::policy_builder_for_method;
+use result::AuthResult;
 
 pub struct Claims {
     pub principal_id: String,
     pub scopes: Vec<&'static str>,
 }
 
-pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output=T> + Send + 'a>>;
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 pub trait Authenticator {
-    fn authenticate(event: &apigw::ApiGatewayCustomAuthorizerRequest) -> BoxFuture<AuthResult<Claims>>;
+    fn authenticate(
+        event: &apigw::ApiGatewayCustomAuthorizerRequest,
+    ) -> BoxFuture<AuthResult<Claims>>;
 
-    fn authorize<'a>(event: &'a apigw::ApiGatewayCustomAuthorizerRequest, claims: &'a Claims) -> BoxFuture<'a, AuthResult<apigw::ApiGatewayCustomAuthorizerPolicy>>;
+    fn authorize<'a>(
+        event: &'a apigw::ApiGatewayCustomAuthorizerRequest,
+        claims: &'a Claims,
+    ) -> BoxFuture<'a, AuthResult<apigw::ApiGatewayCustomAuthorizerPolicy>>;
 
-    fn auth(event: &apigw::ApiGatewayCustomAuthorizerRequest) -> BoxFuture<AuthResult<(Option<String>, apigw::ApiGatewayCustomAuthorizerPolicy)>> {
+    fn auth(
+        event: &apigw::ApiGatewayCustomAuthorizerRequest,
+    ) -> BoxFuture<AuthResult<(Option<String>, apigw::ApiGatewayCustomAuthorizerPolicy)>> {
         Box::pin(async move {
             let claims = Self::authenticate(&event).await?;
             let policy = Self::authorize(&event, &claims).await?;
@@ -37,7 +44,7 @@ pub trait Authenticator {
 pub async fn authorizer_handler<T: Authenticator>(
     event: apigw::ApiGatewayCustomAuthorizerRequest,
     _ctx: Context,
-) -> apigw::ApiGatewayCustomAuthorizerResponse<serde_json::Value> {
+) -> apigw::ApiGatewayCustomAuthorizerResponse<Value> {
     log::info!("Client token: {:?}", event.authorization_token);
     log::info!("Method ARN: {:?}", event.method_arn);
 
@@ -52,11 +59,11 @@ pub async fn authorizer_handler<T: Authenticator>(
     let (principal_id, policy) = T::auth(&event).await.unwrap_or_else(|err| {
         log::info!("authentication failure: {:?}", err);
 
-        (None, policy_builder_for_method(&event)
-                .deny_all_methods()
-                .build())
+        (
+            None,
+            policy_builder_for_method(&event).deny_all_methods().build(),
+        )
     });
-    
 
     // you can send a 401 Unauthorized response to the client by failing like so:
     // Err(HandlerError{ msg: "Unauthorized".to_string(), backtrace: None });
@@ -74,14 +81,14 @@ pub async fn authorizer_handler<T: Authenticator>(
     // made with the same token
 
     //the example policy below denies access to all resources in the RestApi
-    
+
     // new! -- add additional key-value pairs associated with the authenticated principal
     // these are made available by APIGW like so: $context.authorizer.<key>
     // additional context is cached
     apigw::ApiGatewayCustomAuthorizerResponse {
         principal_id: principal_id,
         policy_document: policy,
-        context: HashMap::new(),
+        context: json!({}),
         usage_identifier_key: None,
     }
 }
