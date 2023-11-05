@@ -40,5 +40,6 @@ const apiStack = new WagonApiStack(app, "WagonApi", {
     user_pool_id: env.USER_POOL_ID!,
     apiDomain: "api",
     zoneName: "octomonkey.cloud",
+    zoneId: "Z01082942PS49FCF86EV4",
     certParamName: certParamName,
 });

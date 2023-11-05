@@ -9,10 +9,13 @@ import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as cognito from "aws-cdk-lib/aws-cognito"
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as route53targets from 'aws-cdk-lib/aws-route53-targets';
 import { TokensDbStack } from "./tokens-db-stack";
 import { LogsWidgetStack } from "./logs-widget-stack";
 import { ApiHandlerStack } from "./api-handler-stack";
 import { SSMParameterReader } from './ssm-param-reader';
+
 
 export interface WagonApiStackProps extends cdk.StackProps {
   dashboard: cw.Dashboard;
@@ -20,6 +23,7 @@ export interface WagonApiStackProps extends cdk.StackProps {
   tokens_db_stack: TokensDbStack;
   apiDomain: string;
   zoneName: string;
+  zoneId: string;
   certParamName: string;
 }
 
@@ -27,6 +31,7 @@ export class WagonApiStack extends cdk.Stack {
   api: apigw.RestApi;
   domainName: string;
   cert: acm.ICertificate;
+  zone: route53.IHostedZone;
 
   constructor(scope: Construct, id: string, props: WagonApiStackProps) {
     super(scope, id, props);
@@ -37,6 +42,11 @@ export class WagonApiStack extends cdk.Stack {
     }).getParameterValue();
 
     this.cert = acm.Certificate.fromCertificateArn(this, "Cert", certArn);
+
+    this.zone = route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', {
+      hostedZoneId: props.zoneId,
+      zoneName: props.zoneName,
+    });
 
     this.domainName = `${props.apiDomain}.${props.zoneName}`;
 
@@ -111,6 +121,18 @@ export class WagonApiStack extends cdk.Stack {
       ],
     });
 
+    const aRecord = new route53.ARecord(this, "ApiARecord", {
+      target: route53.RecordTarget.fromAlias(new route53targets.ApiGateway(api)),
+      zone: this.zone,
+      recordName: props.apiDomain,
+    });
+
+    const aaaaRecord = new route53.AaaaRecord(this, "ApiAaaaRecord", {
+      target: route53.RecordTarget.fromAlias(new route53targets.ApiGateway(api)),
+      zone: this.zone,
+      recordName: props.apiDomain,
+    });
+
     /*
     GET / => get_root,
         GET /api/token => get_token,
@@ -162,14 +184,13 @@ export class WagonApiStack extends cdk.Stack {
     const api_v1_crates_crate_version_unyank_resource = api_v1_crates_crate_version_resource.addResource('unyank');
     api_v1_crates_crate_version_download_resource.addMethod('PUT');
 
-
     new cdk.CfnOutput(this, 'WagonApiDomainNameOutput', {
-      value: `${api.restApiId}.execute-api.${this.region}.amazonaws.com`,
+      value: this.domainName,
       exportName: "WagonApiDomainName",
     });
 
     new ssm.StringParameter(this, "WagonApiDomainNameParameter", {
-      stringValue: `${api.restApiId}.execute-api.${this.region}.amazonaws.com`,
+      stringValue: this.domainName,
       parameterName: "wagon-api-domain-name",
     });
 
